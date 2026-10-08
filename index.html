@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gearbox Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#16191d; --muted:#5d6670; --line:#dde0dc; --soft:#eceee9;
+  --accent:#1f3a5f;
+  --rep:#c2362b; --rep-bg:#fbe9e7;
+  --ok:#2e7d4f;  --ok-bg:#e6f3eb;
+  --liq:#c27a12; --liq-bg:#fbf0dc;
+  --crit:#3b3f46; --crit-bg:#e4e6e9;
+  --none:#8a929b; --none-bg:#eef0f2;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121417; --panel:#1b1e22; --ink:#e8eaec; --muted:#9aa3ad; --line:#2c3137; --soft:#23272c;
+    --accent:#8fb3e0;
+    --rep:#ff7a6b; --rep-bg:#3a1f1c; --ok:#5ec98a; --ok-bg:#16301f;
+    --liq:#f0b04d; --liq-bg:#3a2c12; --crit:#c9ced6; --crit-bg:#2e3238; --none:#7d858e; --none-bg:#22262b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121417; --panel:#1b1e22; --ink:#e8eaec; --muted:#9aa3ad; --line:#2c3137; --soft:#23272c;
+  --accent:#8fb3e0;
+  --rep:#ff7a6b; --rep-bg:#3a1f1c; --ok:#5ec98a; --ok-bg:#16301f;
+  --liq:#f0b04d; --liq-bg:#3a2c12; --crit:#c9ced6; --crit-bg:#2e3238; --none:#7d858e; --none-bg:#22262b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+h1{margin:0;font-size:24px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:8px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left}
+.card.active{outline:2px solid var(--c);outline-offset:-1px}
+.card .lbl{font-size:12px;font-weight:600;color:var(--c);text-transform:uppercase;letter-spacing:.04em}
+.card .n{font-size:28px;font-weight:700;font-family:"IBM Plex Mono",monospace;line-height:1.1;margin-top:4px}
+.card .u{color:var(--muted);font-size:12px}
+.dist{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--soft);margin:4px 0 18px}
+.dist span{display:block;height:100%}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.controls input[type=search]{flex:1 1 220px;min-width:0}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+input[type=number]{width:70px;font-family:"IBM Plex Mono",monospace}
+.rules{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:13px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.rules b{color:var(--ink);font-weight:600}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:1040px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:var(--soft);font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:inherit}
+th:nth-child(2),td:nth-child(2){text-align:left}
+th:first-child{background:var(--soft);z-index:1}
+td:first-child{background:var(--panel);max-width:280px;overflow:hidden;text-overflow:ellipsis}
+td{font-family:"IBM Plex Mono",monospace;font-size:13px}
+td:first-child{font-family:"IBM Plex Sans",sans-serif}
+tr:hover td{background:var(--soft)}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font:600 12px "IBM Plex Sans",sans-serif;color:var(--c);background:var(--cb)}
+.muted{color:var(--muted)}
+.spark{vertical-align:middle}
+.count{font-size:13px;color:var(--muted);margin:10px 2px}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 40px)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg{padding:20px}
+.dlg h2{margin:0 0 4px;font-size:18px}
+.field{border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0}
+.field h3{margin:0 0 4px;font-size:14px}
+.field p{margin:0 0 8px;color:var(--muted);font-size:13px}
+.field input[type=file]{width:100%}
+.log{font-size:13px;background:var(--soft);border-radius:8px;padding:10px 12px;margin-top:12px;white-space:pre-wrap;max-height:200px;overflow:auto}
+.warn{color:var(--liq)} .err{color:var(--rep)} .good{color:var(--ok)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.detail td{background:var(--soft)!important;text-align:left;white-space:normal}
+.bars{display:flex;gap:4px;align-items:flex-end;height:90px;padding-top:6px}
+.bars div{flex:1;text-align:center;font-size:11px;color:var(--muted)}
+.bars i{display:block;background:var(--accent);border-radius:3px 3px 0 0;margin:0 auto 3px;width:70%;min-height:1px}
+.bars b{display:block;font-weight:500;color:var(--ink);font-size:11px}
+@media (max-width:600px){h1{font-size:20px}.card .n{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Gearbox Inventory</h1>
+      <div class="sub" id="asof">Loading data…</div>
+    </div>
+    <div class="btns">
+      <button id="btnOpen">Open file</button>
+      <button id="btnExport">Export view</button>
+      <button class="primary" id="btnUpdate">Update data</button>
+    </div>
+  </header>
+
+  <div class="cards" id="cards"></div>
+  <div class="dist" id="dist"></div>
+
+  <div class="panel">
+    <div class="controls">
+      <input type="search" id="q" placeholder="Search description…">
+      <select id="fam"><option value="">All families</option></select>
+      <select id="st"><option value="">All statuses</option></select>
+      <label class="chk"><input type="checkbox" id="showNone"> Show no-movement items</label>
+    </div>
+    <div class="rules">
+      <span><b>Replenish</b> below <input type="number" id="t1" step="0.5" min="0"> months</span>
+      <span><b>Perfect</b> up to <input type="number" id="t2" step="0.5" min="0"></span>
+      <span><b>Liquidate</b> up to <input type="number" id="t3" step="0.5" min="0"></span>
+      <span><b>Critical</b> above that</span>
+      <span>Reorder to <input type="number" id="tgt" step="0.5" min="0"> months</span>
+      <button id="btnReset" style="padding:4px 10px">Reset</button>
+    </div>
+  </div>
+
+  <div class="count" id="count"></div>
+  <div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  <p class="muted" style="font-size:12px;margin-top:14px">
+    Demand used = higher of the 12-month average (returns counted as 0) and Market Demand.
+    Cover = (Current + In-transit) ÷ Demand used. Items with stock but no demand are Critical. Tap a row to see its monthly sales.
+  </p>
+</div>
+
+<input type="file" id="fileOpen" accept=".xlsx,.xls" hidden>
+
+<dialog id="dlg">
+  <div class="dlg">
+    <h2>Update data</h2>
+    <div class="muted" style="font-size:13px">Add any of the files below, then apply. You'll get an updated <b>inventory.xlsx</b> to upload to GitHub.</div>
+
+    <div class="field">
+      <h3>Master file <span class="muted" style="font-weight:400">(optional)</span></h3>
+      <p>Leave empty to start from the data already on this site.</p>
+      <input type="file" id="fMaster" accept=".xlsx,.xls">
+    </div>
+    <div class="field">
+      <h3>Stock file</h3>
+      <p>Columns: Description · Current Inventory · In-Transit/Manufacturing Inventory</p>
+      <input type="file" id="fStock" accept=".xlsx,.xls,.csv">
+    </div>
+    <div class="field">
+      <h3>Monthly sales file</h3>
+      <p id="salesHint">Columns: Description · Sales Qty</p>
+      <input type="file" id="fSales" accept=".xlsx,.xls,.csv">
+    </div>
+    <div class="field">
+      <h3>Market demand file</h3>
+      <p>Columns: Description · Market Demand (monthly qty). Only items listed are changed.</p>
+      <input type="file" id="fMarket" accept=".xlsx,.xls,.csv">
+    </div>
+
+    <div class="log" id="log" hidden></div>
+    <div class="actions">
+      <button id="btnCancel">Close</button>
+      <button class="primary" id="btnApply">Apply &amp; download</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const STATUS = {
+  rep:  {label:'Replenish',         c:'--rep',  cb:'--rep-bg'},
+  ok:   {label:'Perfectly stocked', c:'--ok',   cb:'--ok-bg'},
+  liq:  {label:'Liquidate',         c:'--liq',  cb:'--liq-bg'},
+  crit: {label:'Critical',          c:'--crit', cb:'--crit-bg'},
+  none: {label:'No movement',       c:'--none', cb:'--none-bg'}
+};
+const ORDER = ['rep','ok','liq','crit','none'];
+const DEFAULTS = {t1:2, t2:4, t3:6, tgt:3};
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+let DB = null;          // {items:[{desc,cur,transit,hist[12],market}], month12:'YYYY-MM'}
+let rows = [];
+let sortKey = 'cover', sortDir = 1, statusFilter = '', openRow = null;
+const $ = id => document.getElementById(id);
+
+/* ---------- helpers ---------- */
+const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+const key = s => String(s ?? '').trim();
+const fmt = (v, d=1) => v == null || !isFinite(v) ? '—' : Number(v).toLocaleString('en-IN',{maximumFractionDigits:d, minimumFractionDigits:0});
+function monthLabels(m12){
+  let [y, m] = m12.split('-').map(Number);
+  const out = [];
+  for (let i = 11; i >= 0; i--){
+    let mm = m - i, yy = y;
+    while (mm < 1){ mm += 12; yy--; }
+    out.push(MON[mm-1] + ' ' + String(yy).slice(2));
+  }
+  return out; // index 0 = Month 1 (oldest)
+}
+function nextMonth(m12){ let [y,m] = m12.split('-').map(Number); m++; if (m>12){m=1;y++;} return y+'-'+String(m).padStart(2,'0'); }
+function normMonth(v){
+  if (typeof v === 'number'){ const d = XLSX.SSF.parse_date_code(v); return d.y + '-' + String(d.m).padStart(2,'0'); }
+  const s = String(v ?? '').trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})/); if (m) return m[1] + '-' + m[2].padStart(2,'0');
+  m = s.match(/^([A-Za-z]{3})[a-z]*[\s-]+(\d{2,4})$/);
+  if (m){ const mi = MON.findIndex(x => x.toLowerCase() === m[1].toLowerCase()); let y = +m[2]; if (y < 100) y += 2000; if (mi >= 0) return y + '-' + String(mi+1).padStart(2,'0'); }
+  return '2026-09';
+}
+function sheetRows(wb, nameMatch){
+  const name = wb.SheetNames.find(s => s.toLowerCase().includes(nameMatch)) ;
+  return name ? XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:''}) : null;
+}
+function findCol(header, ...words){
+  const h = header.map(x => String(x).toLowerCase());
+  for (const w of words){ const i = h.findIndex(x => x.includes(w)); if (i >= 0) return i; }
+  return -1;
+}
+
+/* ---------- parse master ---------- */
+function parseMaster(wb){
+  const stock = sheetRows(wb, 'stock');
+  const hist = sheetRows(wb, 'histor');
+  const mkt = sheetRows(wb, 'market');
+  if (!stock || !hist) throw new Error('Master file needs "Stock" and "Historical Data" sheets.');
+  const items = []; const byKey = new Map();
+  const add = d => { const it = {desc:d, cur:0, transit:0, hist:Array(12).fill(0), market:null}; items.push(it); if (!byKey.has(key(d))) byKey.set(key(d), it); return it; };
+  // Stock — keep row order; duplicates (same text) stay separate rows
+  const sh = stock[0], sD = findCol(sh,'desc'), sC = findCol(sh,'current'), sT = findCol(sh,'transit','manufact');
+  const stockSeen = new Map();
+  for (const r of stock.slice(1)){
+    const d = r[sD]; if (key(d) === '') continue;
+    const it = add(d); it.cur = n(r[sC]); it.transit = sT >= 0 ? n(r[sT]) : 0;
+    stockSeen.set(key(d), (stockSeen.get(key(d))||[]).concat(it));
+  }
+  // History — match row-by-row in order for identical texts
+  const hh = hist[0], hD = findCol(hh,'desc');
+  const mCols = []; for (let i = 1; i <= 12; i++){ const c = hh.findIndex(x => String(x).trim().toLowerCase() === 'month ' + i); mCols.push(c); }
+  const used = new Map();
+  for (const r of hist.slice(1)){
+    const k = key(r[hD]); if (!k) continue;
+    const list = stockSeen.get(k) || []; const idx = used.get(k) || 0; used.set(k, idx+1);
+    const it = list[idx] || add(r[hD]);
+    it.hist = mCols.map(c => c >= 0 ? n(r[c]) : 0);
+  }
+  if (mkt){
+    const mh = mkt[0], mD = findCol(mh,'desc'), mV = findCol(mh,'market','demand');
+    const usedM = new Map();
+    for (const r of mkt.slice(1)){
+      const k = key(r[mD]); if (!k) continue;
+      const list = stockSeen.get(k) || []; const idx = usedM.get(k) || 0; usedM.set(k, idx+1);
+      const it = list[idx]; if (!it) continue;
+      it.market = (r[mV] === '' || r[mV] == null) ? null : n(r[mV]);
+    }
+  }
+  let m12 = '2026-09';
+  const set = sheetRows(wb, 'setting');
+  if (set){ const row = set.find(r => String(r[0]).toLowerCase().includes('month 12')); if (row) m12 = normMonth(row[1]); }
+  return {items, month12:m12};
+}
+
+/* ---------- compute ---------- */
+function thresholds(){ return {t1:n($('t1').value), t2:n($('t2').value), t3:n($('t3').value), tgt:n($('tgt').value)}; }
+function compute(){
+  const T = thresholds();
+  rows = DB.items.map((it, i) => {
+    const avg = it.hist.reduce((a,b) => a + Math.max(0,b), 0) / 12;
+    const demand = Math.max(avg, it.market ?? 0);
+    const avail = it.cur + it.transit;
+    let cover = demand > 0 ? avail / demand : (avail > 0 ? Infinity : null);
+    let st;
+    if (demand <= 0) st = avail > 0 ? 'crit' : 'none';
+    else if (cover < T.t1) st = 'rep';
+    else if (cover <= T.t2) st = 'ok';
+    else if (cover <= T.t3) st = 'liq';
+    else st = 'crit';
+    const reorder = st === 'rep' ? Math.max(0, Math.ceil(T.tgt * demand - avail)) : 0;
+    const excess = (st === 'liq' || st === 'crit') ? Math.max(0, Math.floor(avail - T.t2 * demand)) : 0;
+    const fam = (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase();
+    return {i, desc:it.desc, fam, cur:it.cur, transit:it.transit, avail, avg, market:it.market, demand, cover, st, reorder, excess, hist:it.hist, last:it.hist[11]};
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  compute();
+  const showNone = $('showNone').checked;
+  const counts = {}; ORDER.forEach(s => counts[s] = {n:0, u:0});
+  rows.forEach(r => { counts[r.st].n++; counts[r.st].u += r.avail; });
+
+  $('cards').innerHTML = ORDER.filter(s => s !== 'none' || showNone).map(s => {
+    const S = STATUS[s];
+    return `<button class="card ${statusFilter===s?'active':''}" data-st="${s}" style="--c:var(${S.c})">
+      <div class="lbl">${S.label}</div><div class="n">${counts[s].n}</div>
+      <div class="u">${fmt(counts[s].u,0)} units in stock${s==='rep' ? ' · reorder ' + fmt(rows.filter(r=>r.st==='rep').reduce((a,r)=>a+r.reorder,0),0) : ''}${(s==='liq'||s==='crit') ? ' · excess ' + fmt(rows.filter(r=>r.st===s).reduce((a,r)=>a+r.excess,0),0) : ''}</div>
+    </button>`;
+  }).join('');
+  document.querySelectorAll('.card').forEach(c => c.onclick = () => { statusFilter = statusFilter === c.dataset.st ? '' : c.dataset.st; $('st').value = statusFilter; render(); });
+
+  const total = ORDER.filter(s => s !== 'none').reduce((a,s) => a + counts[s].n, 0) || 1;
+  $('dist').innerHTML = ORDER.filter(s => s !== 'none').map(s => `<span title="${STATUS[s].label}: ${counts[s].n}" style="width:${counts[s].n/total*100}%;background:var(${STATUS[s].c})"></span>`).join('');
+
+  const labels = monthLabels(DB.month12);
+  const q = $('q').value.trim().toLowerCase(), fam = $('fam').value;
+  let view = rows.filter(r =>
+    (showNone || r.st !== 'none' || statusFilter === 'none') &&
+    (!statusFilter || r.st === statusFilter) &&
+    (!fam || r.fam === fam) &&
+    (!q || String(r.desc).toLowerCase().includes(q)));
+  view.sort((a,b) => {
+    let x = a[sortKey], y = b[sortKey];
+    if (sortKey === 'st'){ x = ORDER.indexOf(x); y = ORDER.indexOf(y); }
+    if (x == null) x = -1; if (y == null) y = -1;
+    if (typeof x === 'string') return x.localeCompare(y) * sortDir;
+    return (x === y ? 0 : x > y ? 1 : -1) * sortDir;
+  });
+
+  const cols = [
+    ['desc','Description'],['st','Status'],['cover','Cover (mo)'],['cur','Current'],['transit','In-transit'],['avail','Available'],
+    ['avg','Avg / mo'],['market','Market'],['demand','Demand used'],['last', labels[11] + ' sales'],['reorder','Reorder qty'],['excess','Excess qty'],['spark','12-mo trend']
+  ];
+  $('thead').innerHTML = '<tr>' + cols.map(([k,l]) => `<th data-k="${k}">${l}${sortKey===k ? (sortDir>0?' ▲':' ▼') : ''}</th>`).join('') + '</tr>';
+  document.querySelectorAll('th').forEach(th => th.onclick = () => { const k = th.dataset.k; if (k === 'spark') return; if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'desc' ? 1 : -1; } render(); });
+
+  $('count').textContent = `Showing ${view.length} of ${rows.length} items`;
+  if (!view.length){ $('tbody').innerHTML = `<tr><td colspan="${cols.length}" class="empty">No items match.</td></tr>`; return; }
+  $('tbody').innerHTML = view.map(r => {
+    const S = STATUS[r.st];
+    const max = Math.max(1, ...r.hist);
+    const spark = `<svg class="spark" width="96" height="22" viewBox="0 0 96 22">${r.hist.map((v,j) => { const h = Math.max(0,v)/max*20; return `<rect x="${j*8}" y="${21-h}" width="6" height="${h||0.5}" fill="var(--accent)" opacity="${j===11?1:.55}"/>`; }).join('')}</svg>`;
+    let html = `<tr data-i="${r.i}" style="cursor:pointer">
+      <td title="${esc(r.desc)}">${esc(r.desc)}</td>
+      <td><span class="pill" style="--c:var(${S.c});--cb:var(${S.cb})">${S.label}</span></td>
+      <td>${r.cover === Infinity ? '∞' : fmt(r.cover)}</td>
+      <td>${fmt(r.cur,0)}</td><td>${fmt(r.transit,0)}</td><td><b>${fmt(r.avail,0)}</b></td>
+      <td>${fmt(r.avg,2)}</td><td>${r.market == null ? '<span class="muted">—</span>' : fmt(r.market,2)}</td><td>${fmt(r.demand,2)}</td>
+      <td>${fmt(r.last,0)}</td>
+      <td>${r.reorder ? '<b style="color:var(--rep)">' + fmt(r.reorder,0) + '</b>' : '<span class="muted">—</span>'}</td>
+      <td>${r.excess ? '<b style="color:var(--liq)">' + fmt(r.excess,0) + '</b>' : '<span class="muted">—</span>'}</td>
+      <td>${spark}</td></tr>`;
+    if (openRow === r.i){
+      html += `<tr class="detail"><td colspan="${cols.length}"><div class="bars">${r.hist.map((v,j) => `<div><b>${fmt(v,0)}</b><i style="height:${Math.max(0,v)/max*60}px"></i>${labels[j]}</div>`).join('')}</div></td></tr>`;
+    }
+    return html;
+  }).join('');
+  document.querySelectorAll('#tbody tr[data-i]').forEach(tr => tr.onclick = () => { const i = +tr.dataset.i; openRow = openRow === i ? null : i; render(); });
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function setup(){
+  const labels = monthLabels(DB.month12);
+  $('asof').textContent = `${DB.items.length} items · sales ${labels[0]} – ${labels[11]}`;
+  const fams = [...new Set(DB.items.map(it => (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase()))].sort();
+  $('fam').innerHTML = '<option value="">All families</option>' + fams.map(f => `<option>${f}</option>`).join('');
+  $('st').innerHTML = '<option value="">All statuses</option>' + ORDER.map(s => `<option value="${s}">${STATUS[s].label}</option>`).join('');
+  $('st').value = statusFilter;
+  $('salesHint').innerHTML = `Columns: Description · Sales Qty. Will be recorded as <b>${monthLabels(nextMonth(DB.month12))[11]}</b> (new Month 12); ${labels[0]} drops off.`;
+  render();
+}
+
+/* ---------- thresholds ---------- */
+function loadThresholds(){
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem('inv-thresholds') || '{}'); } catch(e){}
+  for (const k in DEFAULTS) $(k).value = saved[k] ?? DEFAULTS[k];
+}
+function saveThresholds(){ try { localStorage.setItem('inv-thresholds', JSON.stringify(thresholds())); } catch(e){} }
+['t1','t2','t3','tgt'].forEach(id => $(id).addEventListener('input', () => { saveThresholds(); if (DB) render(); }));
+$('btnReset').onclick = () => { for (const k in DEFAULTS) $(k).value = DEFAULTS[k]; saveThresholds(); render(); };
+['q','fam'].forEach(id => $(id).addEventListener('input', () => DB && render()));
+$('st').onchange = () => { statusFilter = $('st').value; render(); };
+$('showNone').onchange = () => DB && render();
+
+/* ---------- load ---------- */
+async function readFile(file){ const buf = await file.arrayBuffer(); return XLSX.read(buf, {type:'array'}); }
+async function boot(){
+  loadThresholds();
+  try {
+    const res = await fetch('inventory.xlsx?v=' + Date.now(), {cache:'no-store'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DB = parseMaster(XLSX.read(await res.arrayBuffer(), {type:'array'}));
+    setup();
+  } catch(e){
+    $('asof').textContent = 'Could not load inventory.xlsx — use "Open file" to load your master file.';
+    $('tbody').innerHTML = '<tr><td class="empty" colspan="13">No data loaded yet.</td></tr>';
+  }
+}
+$('btnOpen').onclick = () => $('fileOpen').click();
+$('fileOpen').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { DB = parseMaster(await readFile(f)); setup(); } catch(err){ alert(err.message); }
+  e.target.value = '';
+};
+
+/* ---------- export current view ---------- */
+$('btnExport').onclick = () => {
+  if (!DB) return;
+  const labels = monthLabels(DB.month12);
+  const data = rows.map(r => ({
+    Description:r.desc, Status:STATUS[r.st].label, 'Cover (months)': r.cover === Infinity ? 'No demand' : (r.cover == null ? '' : +r.cover.toFixed(2)),
+    Current:r.cur, 'In-transit':r.transit, Available:r.avail, 'Avg / month':+r.avg.toFixed(2), 'Market demand': r.market ?? '',
+    'Demand used':+r.demand.toFixed(2), 'Reorder qty':r.reorder, 'Excess qty':r.excess,
+    ...Object.fromEntries(labels.map((l,j) => [l, r.hist[j]]))
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Stock status');
+  XLSX.writeFile(wb, 'stock-status-' + DB.month12 + '.xlsx');
+};
+
+/* ---------- update tool ---------- */
+const log = (msg, cls='') => { const l = $('log'); l.hidden = false; l.innerHTML += `<div class="${cls}">${msg}</div>`; };
+$('btnUpdate').onclick = () => { $('log').hidden = true; $('log').innerHTML = ''; $('dlg').showModal(); };
+$('btnCancel').onclick = () => $('dlg').close();
+
+function readTwoCol(wb, valWords){
+  const r = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
+  let hi = r.findIndex(row => row.some(c => String(c).toLowerCase().includes('desc')));
+  if (hi < 0) throw new Error('Could not find a "Description" column.');
+  const h = r[hi]; const d = findCol(h,'desc');
+  const cols = valWords.map(w => findCol(h, ...w));
+  return r.slice(hi+1).filter(row => key(row[d]) !== '').map(row => ({desc:row[d], vals:cols.map(c => c >= 0 ? row[c] : '')}));
+}
+
+$('btnApply').onclick = async () => {
+  $('log').innerHTML = ''; $('btnApply').disabled = true;
+  try {
+    const fM = $('fMaster').files[0], fS = $('fStock').files[0], fSa = $('fSales').files[0], fMk = $('fMarket').files[0];
+    if (!fS && !fSa && !fMk && !fM){ log('Add at least one file.', 'err'); return; }
+    let db = fM ? parseMaster(await readFile(fM)) : structuredClone(DB);
+    if (!db) { log('No master data loaded.', 'err'); return; }
+    const index = () => { const m = new Map(); db.items.forEach(it => { const k = key(it.desc); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }); return m; };
+    const newItem = d => { const it = {desc:d, cur:0, transit:0, hist:Array(12).fill(0), market:null}; db.items.push(it); return it; };
+
+    if (fS){
+      const lines = readTwoCol(await readFile(fS), [['current'],['transit','manufact']]);
+      const idx = index(); const seen = new Set(); let added = [];
+      for (const ln of lines){
+        const k = key(ln.desc); let list = idx.get(k);
+        if (!list){ list = [newItem(ln.desc)]; idx.set(k, list); added.push(ln.desc); }
+        list[0].cur = n(ln.vals[0]); list[0].transit = n(ln.vals[1]); seen.add(k);
+      }
+      const missing = db.items.filter(it => !seen.has(key(it.desc)));
+      log(`Stock: ${lines.length} lines applied.`, 'good');
+      if (added.length) log(`Stock: ${added.length} new item(s) added — ${added.slice(0,5).map(esc).join('; ')}${added.length>5?'…':''}`, 'warn');
+      if (missing.length) log(`Stock: ${missing.length} item(s) not in the stock file kept their old values.`, 'warn');
+    }
+
+    if (fSa){
+      const lines = readTwoCol(await readFile(fSa), [['sales','qty','quantity']]);
+      const totals = new Map(); for (const ln of lines){ const k = key(ln.desc); totals.set(k, (totals.get(k)||0) + n(ln.vals[0])); }
+      const idx = index(); const added = [];
+      for (const [k] of totals) if (!idx.has(k)){ const ln = lines.find(l => key(l.desc) === k); idx.set(k, [newItem(ln.desc)]); added.push(ln.desc); }
+      db.items.forEach(it => { it.hist = it.hist.slice(1).concat([0]); });
+      for (const [k, v] of totals){ for (const it of idx.get(k)) it.hist[11] = v; }
+      const oldLabel = monthLabels(db.month12)[0];
+      db.month12 = nextMonth(db.month12);
+      log(`Sales: recorded as ${monthLabels(db.month12)[11]} (${totals.size} items, ${fmt([...totals.values()].reduce((a,b)=>a+b,0),0)} units). ${oldLabel} dropped.`, 'good');
+      if (added.length) log(`Sales: ${added.length} description(s) not found in stock were added as new items — check spelling: ${added.slice(0,5).map(esc).join('; ')}${added.length>5?'…':''}`, 'warn');
+    }
+
+    if (fMk){
+      const lines = readTwoCol(await readFile(fMk), [['market','demand','qty']]);
+      const idx = index(); let miss = [];
+      for (const ln of lines){
+        const list = idx.get(key(ln.desc)); if (!list){ miss.push(ln.desc); continue; }
+        const v = ln.vals[0]; list.forEach(it => it.market = (v === '' || v == null) ? null : n(v));
+      }
+      log(`Market demand: ${lines.length - miss.length} item(s) updated.`, 'good');
+      if (miss.length) log(`Market demand: ${miss.length} description(s) not found, skipped — ${miss.slice(0,5).map(esc).join('; ')}${miss.length>5?'…':''}`, 'warn');
+    }
+
+    writeMaster(db);
+    DB = db; setup();
+    log('Downloaded <b>inventory.xlsx</b>. Upload it to GitHub (replace the old file) to publish.', 'good');
+    ['fMaster','fStock','fSales','fMarket'].forEach(id => $(id).value = '');
+  } catch(err){ log('Error: ' + esc(err.message), 'err'); }
+  finally { $('btnApply').disabled = false; }
+};
+
+function writeMaster(db){
+  const wb = XLSX.utils.book_new();
+  const stock = [['Description','Current Inventory','In-Transit/Manufacturing Inventory'], ...db.items.map(it => [it.desc, it.cur, it.transit])];
+  const hist = [['Description', ...Array.from({length:12}, (_,i) => 'Month ' + (i+1)), 'Average/Month', 'Max 12 Months'],
+    ...db.items.map(it => [it.desc, ...it.hist, +(it.hist.reduce((a,b)=>a+b,0)/12).toFixed(4), Math.max(0, ...it.hist)])];
+  const mkt = [['Description','Market Demand'], ...db.items.map(it => [it.desc, it.market ?? ''])];
+  const set = [['Setting','Value','Note'], ['Month 12 is', db.month12, 'Newest month in Historical Data (YYYY-MM). The update tool moves this forward automatically.']];
+  const add = (aoa, name, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(w => ({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
+  add(stock, 'Stock', [42,18,32]); add(hist, 'Historical Data', [42, ...Array(12).fill(9), 14, 14]);
+  add(mkt, 'Market Demand', [42,16]); add(set, 'Settings', [16,12,80]);
+  XLSX.writeFile(wb, 'inventory.xlsx');
+}
+
+boot();
+</script>
+</body>
+</html>
