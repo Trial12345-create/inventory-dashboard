@@ -64,7 +64,7 @@ th{position:sticky;top:0;background:var(--soft);font-size:12px;font-weight:600;c
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:inherit}
 th:nth-child(2),td:nth-child(2){text-align:left}
 th:first-child{background:var(--soft);z-index:1}
-td:first-child{background:var(--panel);max-width:280px;overflow:hidden;text-overflow:ellipsis}
+td:first-child{background:var(--panel);max-width:400px;min-width:260px}
 td{font-family:"IBM Plex Mono",monospace;font-size:13px}
 td:first-child{font-family:"IBM Plex Sans",sans-serif}
 tr:hover td{background:var(--soft)}
@@ -89,7 +89,42 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .bars div{flex:1;text-align:center;font-size:11px;color:var(--muted)}
 .bars i{display:block;background:var(--accent);border-radius:3px 3px 0 0;margin:0 auto 3px;width:70%;min-height:1px}
 .bars b{display:block;font-weight:500;color:var(--ink);font-size:11px}
-@media (max-width:600px){h1{font-size:20px}.card .n{font-size:22px}}
+.dcell{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dcell>span{overflow:hidden;text-overflow:ellipsis}
+.psbtn{flex:none;font:500 12px "IBM Plex Sans",sans-serif;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--accent);cursor:pointer}
+.psbtn:hover{border-color:var(--accent)}
+.psbtn.none{color:var(--muted);cursor:default}
+.psbtn .short{display:none}
+#ps{width:min(1100px,calc(100vw - 32px))}
+.pshead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:6px 12px;font-size:13px}
+.seg button.on{background:var(--accent);color:var(--panel)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:14px 0}
+.tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font:600 18px "IBM Plex Mono",monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .v.txt{font:600 14px "IBM Plex Sans",sans-serif;white-space:normal}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.split h4{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:600}
+.hbar{display:grid;grid-template-columns:minmax(80px,40%) 1fr 48px;gap:8px;align-items:center;font-size:12px;margin:3px 0}
+.hbar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .tr{background:var(--soft);border-radius:3px;height:10px}
+.hbar .tr i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.hbar .q{text-align:right;font-family:"IBM Plex Mono",monospace}
+.psfilters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.psfilters input{flex:1 1 180px;min-width:0}
+.pstable{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.pstable table{min-width:760px}
+.pstable td,.pstable th{text-align:left}
+.pstable td{font-family:"IBM Plex Sans",sans-serif}
+.pstable td.num{font-family:"IBM Plex Mono",monospace}
+.pstable td.num,.pstable th.num{text-align:right}
+.pstable th:first-child,.pstable td:first-child{position:static}
+.radio{display:flex;gap:14px;font-size:13px;margin-top:8px}
+@media (max-width:600px){h1{font-size:20px}.card .n{font-size:22px}
+  td:first-child{max-width:200px}.psbtn .full{display:none}.psbtn .short{display:inline}
+  .split{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -136,6 +171,37 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
 <input type="file" id="fileOpen" accept=".xlsx,.xls" hidden>
 
+<dialog id="ps">
+  <div class="dlg">
+    <div class="pshead">
+      <div>
+        <h2 id="psTitle"></h2>
+        <div class="muted" style="font-size:13px" id="psSub"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="seg" id="psRange">
+          <button data-r="12" class="on" id="psR12">Last 12 months</button>
+          <button data-r="all" id="psRall">All history</button>
+        </div>
+        <button id="psClose">Close</button>
+      </div>
+    </div>
+    <div class="tiles" id="psTiles"></div>
+    <div class="split">
+      <div><h4>By zone</h4><div id="psZones"></div></div>
+      <div><h4>Top customers</h4><div id="psCust"></div></div>
+    </div>
+    <div class="psfilters">
+      <input type="search" id="psQ" placeholder="Search customer…">
+      <select id="psZone"><option value="">All zones</option></select>
+      <select id="psBranch"><option value="">All branches</option></select>
+      <button id="psDl">Download</button>
+    </div>
+    <div class="count" id="psCount" style="margin:4px 2px 8px"></div>
+    <div class="pstable"><table><thead id="psHead"></thead><tbody id="psBody"></tbody></table></div>
+  </div>
+</dialog>
+
 <dialog id="dlg">
   <div class="dlg">
     <h2>Update data</h2>
@@ -160,6 +226,15 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <h3>Market demand file</h3>
       <p>Columns: Description · Market Demand (monthly qty). Only items listed are changed.</p>
       <input type="file" id="fMarket" accept=".xlsx,.xls,.csv">
+    </div>
+    <div class="field">
+      <h3>Past sales detail file</h3>
+      <p>Columns: Customer · SKU Description · QTY · Date · PRODUCT · GROUP · ZONE · BRANCH. Downloads an updated <b>sales-detail.xlsx</b>.</p>
+      <input type="file" id="fDetail" accept=".xlsx,.xls,.csv">
+      <div class="radio">
+        <label><input type="radio" name="dmode" value="add" checked> Add to existing lines (new month only)</label>
+        <label><input type="radio" name="dmode" value="replace"> Replace all (full export)</label>
+      </div>
     </div>
 
     <div class="log" id="log" hidden></div>
@@ -332,7 +407,7 @@ function render(){
     const max = Math.max(1, ...r.hist);
     const spark = `<svg class="spark" width="96" height="22" viewBox="0 0 96 22">${r.hist.map((v,j) => { const h = Math.max(0,v)/max*20; return `<rect x="${j*8}" y="${21-h}" width="6" height="${h||0.5}" fill="var(--accent)" opacity="${j===11?1:.55}"/>`; }).join('')}</svg>`;
     let html = `<tr data-i="${r.i}" style="cursor:pointer">
-      <td title="${esc(r.desc)}">${esc(r.desc)}</td>
+      <td><div class="dcell"><span title="${esc(r.desc)}">${esc(r.desc)}</span>${psButton(r)}</div></td>
       <td><span class="pill" style="--c:var(${S.c});--cb:var(${S.cb})">${S.label}</span></td>
       <td>${r.cover === Infinity ? '∞' : fmt(r.cover)}</td>
       <td>${fmt(r.cur,0)}</td><td>${fmt(r.transit,0)}</td><td><b>${fmt(r.avail,0)}</b></td>
@@ -347,6 +422,7 @@ function render(){
     return html;
   }).join('');
   document.querySelectorAll('#tbody tr[data-i]').forEach(tr => tr.onclick = () => { const i = +tr.dataset.i; openRow = openRow === i ? null : i; render(); });
+  document.querySelectorAll('.psbtn[data-ps]').forEach(b => b.onclick = e => { e.stopPropagation(); openPS(+b.dataset.ps); });
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -386,6 +462,136 @@ async function boot(){
     $('asof').textContent = 'Could not load inventory.xlsx — use "Open file" to load your master file.';
     $('tbody').innerHTML = '<tr><td class="empty" colspan="13">No data loaded yet.</td></tr>';
   }
+  try {
+    const res = await fetch('sales-detail.xlsx?v=' + Date.now(), {cache:'no-store'});
+    if (res.ok){ setSD(parseSalesDetail(XLSX.read(await res.arrayBuffer(), {type:'array'}))); if (DB) render(); }
+    else SD_STATE = 'missing';
+  } catch(e){ SD_STATE = 'missing'; if (DB) render(); }
+}
+
+/* ---------- past sales detail ---------- */
+let SD = null, SDidx = new Map(), SD_STATE = 'loading';
+let ps = {i:null, range:'12', sortKey:'date', sortDir:-1};
+const nkey = s => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+function serialFromYMD(y, m, d){ return Date.UTC(y, m-1, d) / 86400000 + 25569; }
+function toDateParts(v){
+  if (typeof v === 'number' && isFinite(v)){ const p = XLSX.SSF.parse_date_code(v); return p ? {y:p.y, m:p.m, d:p.d} : null; }
+  if (v instanceof Date && !isNaN(v)) return {y:v.getFullYear(), m:v.getMonth()+1, d:v.getDate()};
+  const s = String(v ?? '').trim(); if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return {y:+m[1], m:+m[2], d:+m[3]};
+  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/); if (m){ let y = +m[3]; if (y < 100) y += 2000; return {y, m:+m[2], d:+m[1]}; }  // dd/mm/yyyy
+  m = s.match(/^(\d{1,2})[\s-]([A-Za-z]{3})[a-z]*[\s-](\d{2,4})$/);
+  if (m){ const mi = MON.findIndex(x => x.toLowerCase() === m[2].toLowerCase()); let y = +m[3]; if (y < 100) y += 2000; if (mi >= 0) return {y, m:mi+1, d:+m[1]}; }
+  return null;
+}
+function parseSalesDetail(wb){
+  for (const name of wb.SheetNames){
+    const r = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:'', raw:true});
+    const hi = r.findIndex(row => { const h = row.map(x => String(x).toLowerCase()); return h.some(x => x.includes('customer')) && h.some(x => x.includes('qty') || x.includes('quantity')); });
+    if (hi < 0) continue;
+    const h = r[hi];
+    const c = {cust:findCol(h,'customer'), desc:findCol(h,'sku','desc'), qty:findCol(h,'qty','quantity'), date:findCol(h,'date'),
+               prod:findCol(h,'product'), grp:findCol(h,'group'), zone:findCol(h,'zone'), br:findCol(h,'branch')};
+    if (c.desc < 0 || c.date < 0) throw new Error('Past sales file needs SKU Description and Date columns.');
+    const lines = []; let bad = 0;
+    for (const row of r.slice(hi+1)){
+      if (key(row[c.desc]) === '') continue;
+      const p = toDateParts(row[c.date]); if (!p){ bad++; continue; }
+      const g = i => i >= 0 ? key(row[i]) : '';
+      lines.push({cust:g(c.cust), desc:key(row[c.desc]), qty:n(row[c.qty]), y:p.y, m:p.m, d:p.d,
+        ym:p.y + '-' + String(p.m).padStart(2,'0'), sort:serialFromYMD(p.y,p.m,p.d), prod:g(c.prod), grp:g(c.grp), zone:g(c.zone), br:g(c.br)});
+    }
+    return {lines, bad};
+  }
+  throw new Error('Could not find a sheet with Customer and QTY columns.');
+}
+function setSD(sd){
+  SD = sd; SD_STATE = 'ready'; SDidx = new Map();
+  for (const l of sd.lines){ const k = nkey(l.desc); if (!SDidx.has(k)) SDidx.set(k, []); SDidx.get(k).push(l); }
+}
+function windowStart(){ let [y, m] = DB.month12.split('-').map(Number); m -= 11; while (m < 1){ m += 12; y--; } return y + '-' + String(m).padStart(2,'0'); }
+function linesFor(i, range){
+  const all = SDidx.get(nkey(DB.items[i].desc)) || [];
+  if (range === 'all') return all;
+  const a = windowStart(), b = DB.month12;
+  return all.filter(l => l.ym >= a && l.ym <= b);
+}
+function psButton(r){
+  if (SD_STATE !== 'ready') return SD_STATE === 'loading' ? '' : '';
+  const all = SDidx.get(nkey(r.desc)) || [];
+  if (!all.length) return `<span class="psbtn none">No past sales</span>`;
+  const c = linesFor(r.i, '12').length;
+  return `<button class="psbtn" data-ps="${r.i}" title="${all.length} sales lines in total"><span class="full">Expand past sales · ${c}</span><span class="short">Sales · ${c}</span></button>`;
+}
+const fmtDate = l => String(l.d).padStart(2,'0') + ' ' + MON[l.m-1] + ' ' + l.y;
+function openPS(i){
+  ps.i = i; ps.sortKey = 'date'; ps.sortDir = -1;
+  $('psQ').value = ''; $('psZone').value = ''; $('psBranch').value = '';
+  setRange('12'); $('ps').showModal();
+}
+function setRange(r){ ps.range = r; $('psR12').classList.toggle('on', r === '12'); $('psRall').classList.toggle('on', r === 'all'); renderPS(true); }
+$('psR12').onclick = () => setRange('12');
+$('psRall').onclick = () => setRange('all');
+$('psClose').onclick = () => $('ps').close();
+['psQ','psZone','psBranch'].forEach(id => $(id).addEventListener('input', () => renderPS(false)));
+function groupSum(lines, f){ const m = new Map(); lines.forEach(l => { const k = f(l) || '—'; m.set(k, (m.get(k)||0) + l.qty); }); return [...m].sort((a,b) => b[1]-a[1]); }
+function hbars(list, max){ const top = Math.max(1, ...list.map(x => x[1])); return list.slice(0, max).map(([k,v]) => `<div class="hbar"><span class="nm" title="${esc(k)}">${esc(k)}</span><span class="tr"><i style="width:${Math.max(0,v)/top*100}%"></i></span><span class="q">${fmt(v,0)}</span></div>`).join('') || '<div class="muted" style="font-size:12px">No sales</div>'; }
+function renderPS(resetFilters){
+  const it = DB.items[ps.i], row = rows.find(r => r.i === ps.i), labels = monthLabels(DB.month12);
+  const base = linesFor(ps.i, ps.range);
+  $('psTitle').textContent = it.desc;
+  $('psSub').innerHTML = `${row ? STATUS[row.st].label + ' · ' : ''}Available ${fmt(it.cur + it.transit,0)} · ` +
+    (ps.range === '12' ? `${labels[0]} – ${labels[11]}` : `All history`);
+  // tiles
+  const qty = base.reduce((a,l) => a + l.qty, 0);
+  const custs = groupSum(base, l => l.cust);
+  const last = base.reduce((a,l) => (!a || l.sort > a.sort) ? l : a, null);
+  const months = new Set(base.map(l => l.ym)).size;
+  $('psTiles').innerHTML = [
+    ['Total qty', fmt(qty,0)], ['Sales lines', fmt(base.length,0)], ['Customers', fmt(custs.length,0)],
+    ['Months with sales', fmt(months,0)], ['Last sale', last ? fmtDate(last) : '—', true],
+    ['Top customer', custs[0] ? `${esc(custs[0][0])} (${fmt(custs[0][1],0)})` : '—', true]
+  ].map(([k,v,t]) => `<div class="tile"><div class="k">${k}</div><div class="v ${t?'txt':''}">${v}</div></div>`).join('');
+  $('psZones').innerHTML = hbars(groupSum(base, l => l.zone), 6);
+  $('psCust').innerHTML = hbars(custs, 5);
+  if (resetFilters){
+    const z = [...new Set(base.map(l => l.zone).filter(Boolean))].sort(), b = [...new Set(base.map(l => l.br).filter(Boolean))].sort();
+    $('psZone').innerHTML = '<option value="">All zones</option>' + z.map(x => `<option>${esc(x)}</option>`).join('');
+    $('psBranch').innerHTML = '<option value="">All branches</option>' + b.map(x => `<option>${esc(x)}</option>`).join('');
+  }
+  // table
+  const q = $('psQ').value.trim().toLowerCase(), zf = $('psZone').value, bf = $('psBranch').value;
+  let view = base.filter(l => (!q || l.cust.toLowerCase().includes(q)) && (!zf || l.zone === zf) && (!bf || l.br === bf));
+  const sk = ps.sortKey === 'date' ? 'sort' : ps.sortKey;
+  view = view.slice().sort((a,b) => { const x = a[sk], y = b[sk]; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * ps.sortDir; });
+  const cols = [['date','Date'],['cust','Customer'],['qty','Qty'],['zone','Zone'],['br','Branch'],['grp','Group'],['prod','Product'],['desc','Description in sales file']];
+  $('psHead').innerHTML = '<tr>' + cols.map(([k,l]) => `<th data-k="${k}" class="${k==='qty'?'num':''}">${l}${ps.sortKey===k ? (ps.sortDir>0?' ▲':' ▼') : ''}</th>`).join('') + '</tr>';
+  document.querySelectorAll('#psHead th').forEach(th => th.onclick = () => { const k = th.dataset.k; if (ps.sortKey === k) ps.sortDir *= -1; else { ps.sortKey = k; ps.sortDir = (k === 'date' || k === 'qty') ? -1 : 1; } renderPS(false); });
+  const vq = view.reduce((a,l) => a + l.qty, 0);
+  $('psCount').textContent = `${view.length} lines · ${fmt(vq,0)} units` + (view.length !== base.length ? ` (filtered from ${base.length})` : '');
+  $('psBody').innerHTML = view.length ? view.map(l => `<tr><td>${fmtDate(l)}</td><td>${esc(l.cust)}</td><td class="num">${fmt(l.qty,0)}</td><td>${esc(l.zone||'—')}</td><td>${esc(l.br||'—')}</td><td>${esc(l.grp)}</td><td>${esc(l.prod)}</td><td class="muted">${esc(l.desc)}</td></tr>`).join('')
+    : `<tr><td colspan="8" class="empty">No sales in this period${ps.range==='12' ? ' — try "All history"' : ''}.</td></tr>`;
+  ps.view = view;
+}
+$('psDl').onclick = () => {
+  const it = DB.items[ps.i];
+  const aoa = [['Date','Customer','SKU Description','QTY','PRODUCT','GROUP','ZONE','BRANCH'],
+    ...(ps.view || []).map(l => [serialFromYMD(l.y,l.m,l.d), l.cust, l.desc, l.qty, l.prod, l.grp, l.zone, l.br])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for (let r = 1; r < aoa.length; r++){ const c = ws[XLSX.utils.encode_cell({r, c:0})]; if (c){ c.t = 'n'; c.z = 'dd-mmm-yyyy'; } }
+  ws['!cols'] = [{wch:12},{wch:36},{wch:36},{wch:6},{wch:10},{wch:7},{wch:8},{wch:12}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Past sales');
+  XLSX.writeFile(wb, 'past-sales-' + String(it.desc).replace(/[^\w.-]+/g,'_').slice(0,60) + '.xlsx');
+};
+function writeSalesDetail(sd){
+  const lines = sd.lines.slice().sort((a,b) => a.sort - b.sort);
+  const aoa = [['Customer','SKU Description','QTY','Date','PRODUCT','GROUP','ZONE','BRANCH'],
+    ...lines.map(l => [l.cust, l.desc, l.qty, serialFromYMD(l.y,l.m,l.d), l.prod, l.grp, l.zone, l.br])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for (let r = 1; r < aoa.length; r++){ const c = ws[XLSX.utils.encode_cell({r, c:3})]; if (c){ c.t = 'n'; c.z = 'dd-mmm-yyyy'; } }
+  ws['!cols'] = [{wch:36},{wch:36},{wch:6},{wch:12},{wch:10},{wch:7},{wch:8},{wch:12}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sales Detail');
+  XLSX.writeFile(wb, 'sales-detail.xlsx');
 }
 $('btnOpen').onclick = () => $('fileOpen').click();
 $('fileOpen').onchange = async e => {
@@ -426,8 +632,33 @@ function readTwoCol(wb, valWords){
 $('btnApply').onclick = async () => {
   $('log').innerHTML = ''; $('btnApply').disabled = true;
   try {
-    const fM = $('fMaster').files[0], fS = $('fStock').files[0], fSa = $('fSales').files[0], fMk = $('fMarket').files[0];
-    if (!fS && !fSa && !fMk && !fM){ log('Add at least one file.', 'err'); return; }
+    const fM = $('fMaster').files[0], fS = $('fStock').files[0], fSa = $('fSales').files[0], fMk = $('fMarket').files[0], fD = $('fDetail').files[0];
+    if (!fS && !fSa && !fMk && !fM && !fD){ log('Add at least one file.', 'err'); return; }
+    if (fD){
+      const nd = parseSalesDetail(await readFile(fD));
+      const mode = document.querySelector('input[name=dmode]:checked').value;
+      if (!nd.lines.length){ log('Past sales: no valid lines found in the file.', 'err'); return; }
+      const minD = nd.lines.reduce((a,l) => Math.min(a, l.sort), Infinity), maxD = nd.lines.reduce((a,l) => Math.max(a, l.sort), -Infinity);
+      const dstr = s => { const p = XLSX.SSF.parse_date_code(s); return fmtDate({y:p.y, m:p.m, d:p.d}); };
+      let combined;
+      if (mode === 'add' && SD){
+        const oldMax = SD.lines.reduce((a,l) => Math.max(a, l.sort), -Infinity);
+        if (minD <= oldMax) log(`Past sales: the new file starts ${dstr(minD)}, but existing data already runs to ${dstr(oldMax)}. If these lines were already included they are now counted twice — use "Replace all" with a full export instead.`, 'warn');
+        combined = {lines: SD.lines.concat(nd.lines), bad: 0};
+        log(`Past sales: added ${nd.lines.length} lines (${dstr(minD)} – ${dstr(maxD)}). Total now ${combined.lines.length}.`, 'good');
+      } else {
+        combined = nd;
+        log(`Past sales: ${nd.lines.length} lines loaded (${dstr(minD)} – ${dstr(maxD)}), replacing previous data.`, 'good');
+      }
+      if (nd.bad) log(`Past sales: ${nd.bad} line(s) skipped because the date could not be read.`, 'warn');
+      const known = new Set((DB ? DB.items : []).map(it => nkey(it.desc)));
+      const unk = [...new Set(nd.lines.map(l => l.desc).filter(d => !known.has(nkey(d))))];
+      if (unk.length) log(`Past sales: ${unk.length} description(s) don't match any dashboard item (they're kept in the file but not shown) — e.g. ${unk.slice(0,4).map(esc).join('; ')}`, 'warn');
+      setSD(combined);
+      writeSalesDetail(combined);
+      log('Downloaded <b>sales-detail.xlsx</b>. Upload it to GitHub (replace the old file).', 'good');
+    }
+    if (!fS && !fSa && !fMk && !fM){ $('fDetail').value = ''; render(); return; }
     let db = fM ? parseMaster(await readFile(fM)) : structuredClone(DB);
     if (!db) { log('No master data loaded.', 'err'); return; }
     const index = () => { const m = new Map(); db.items.forEach(it => { const k = key(it.desc); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }); return m; };
@@ -474,7 +705,7 @@ $('btnApply').onclick = async () => {
     writeMaster(db);
     DB = db; setup();
     log('Downloaded <b>inventory.xlsx</b>. Upload it to GitHub (replace the old file) to publish.', 'good');
-    ['fMaster','fStock','fSales','fMarket'].forEach(id => $(id).value = '');
+    ['fMaster','fStock','fSales','fMarket','fDetail'].forEach(id => $(id).value = '');
   } catch(err){ log('Error: ' + esc(err.message), 'err'); }
   finally { $('btnApply').disabled = false; }
 };
