@@ -89,6 +89,27 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .bars div{flex:1;text-align:center;font-size:11px;color:var(--muted)}
 .bars i{display:block;background:var(--accent);border-radius:3px 3px 0 0;margin:0 auto 3px;width:70%;min-height:1px}
 .bars b{display:block;font-weight:500;color:var(--ink);font-size:11px}
+.topbar{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;margin-bottom:12px}
+.tb-group{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tb-lbl{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.note{font-size:13px;background:var(--liq-bg);color:var(--ink);border-radius:8px;padding:8px 12px;margin-bottom:12px}
+.gridhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.gridhead h3{margin:0;font-size:15px}
+.gridhead .muted{font-size:12px}
+.hgrid-wrap{overflow-x:auto}
+table.hgrid{min-width:640px;width:100%;table-layout:fixed;border-collapse:separate;border-spacing:6px}
+table.hgrid thead th:first-child{width:130px}
+table.hgrid th,table.hgrid td{border:0;padding:0;position:static;background:none}
+table.hgrid thead th{font-size:12px;color:var(--muted);text-align:center;padding:2px 4px;cursor:default}
+table.hgrid tbody th{text-align:left;font-size:13px;font-weight:600;color:var(--c);padding-right:8px;white-space:nowrap;cursor:default}
+table.hgrid td{font-family:"IBM Plex Sans",sans-serif}
+.cell{width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel);cursor:pointer;display:block}
+.cell .cn{font:700 18px "IBM Plex Mono",monospace;color:var(--c)}
+.cell .cu{font-size:11px;color:var(--muted)}
+.cell.empty{opacity:.45;cursor:default}
+.cell.on{outline:2px solid var(--c);outline-offset:-1px}
+.cell.tint{background:var(--cb)}
+.sgpill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 11px "IBM Plex Sans",sans-serif;border:1px solid var(--line);color:var(--ink)}
 .dcell{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .dcell>span{overflow:hidden;text-overflow:ellipsis}
 .psbtn{flex:none;font:500 12px "IBM Plex Sans",sans-serif;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--accent);cursor:pointer}
@@ -141,22 +162,50 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     </div>
   </header>
 
+  <div class="topbar">
+    <div class="tb-group">
+      <span class="tb-lbl">Demand basis</span>
+      <div class="seg" id="basisSeg">
+        <button data-b="hist" class="on">Historical</button>
+        <button data-b="mkt">Market</button>
+      </div>
+    </div>
+    <div class="tb-group">
+      <span class="tb-lbl">Region</span>
+      <select id="zone"><option value="">All zones</option></select>
+      <select id="branch"><option value="">All branches</option></select>
+    </div>
+  </div>
+  <div class="note" id="note" hidden></div>
+
   <div class="cards" id="cards"></div>
   <div class="dist" id="dist"></div>
+
+  <div class="panel" id="gridPanel">
+    <div class="gridhead"><h3>Inventory health by segment</h3><span class="muted" id="gridSub"></span></div>
+    <div class="hgrid-wrap"><table class="hgrid" id="hgrid"></table></div>
+  </div>
 
   <div class="panel">
     <div class="controls">
       <input type="search" id="q" placeholder="Search description…">
       <select id="fam"><option value="">All families</option></select>
       <select id="st"><option value="">All statuses</option></select>
+      <select id="sg"><option value="">All segments</option></select>
       <label class="chk"><input type="checkbox" id="showNone"> Show no-movement items</label>
     </div>
     <div class="rules">
-      <span><b>Replenish</b> below <input type="number" id="t1" step="0.5" min="0"> months</span>
+      <span><b>Understocked</b> below <input type="number" id="t1" step="0.5" min="0"> months</span>
       <span><b>Perfect</b> up to <input type="number" id="t2" step="0.5" min="0"></span>
       <span><b>Liquidate</b> up to <input type="number" id="t3" step="0.5" min="0"></span>
       <span><b>Critical</b> above that</span>
       <span>Reorder to <input type="number" id="tgt" step="0.5" min="0"> months</span>
+    </div>
+    <div class="rules" style="border-top:0;margin-top:4px;padding-top:0">
+      <span><b>Runner</b> sold in ≥ <input type="number" id="fR" step="1" min="1" max="12"> months</span>
+      <span><b>Repeater</b> ≥ <input type="number" id="fP" step="1" min="1" max="12"></span>
+      <span><b>Stranger</b> 1+ · <b>Dead stock</b> 0 with stock</span>
+      <span>Exclude months <input type="text" id="exm" style="width:150px" placeholder="2026-06, 2026-07"></span>
       <button id="btnReset" style="padding:4px 10px">Reset</button>
     </div>
   </div>
@@ -164,8 +213,9 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="count" id="count"></div>
   <div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
   <p class="muted" style="font-size:12px;margin-top:14px">
-    Demand used = higher of the 12-month average (returns counted as 0) and Market Demand.
-    Cover = (Current + In-transit) ÷ Demand used. Items with stock but no demand are Critical. Tap a row to see its monthly sales.
+    Cover = (Current + In-transit) ÷ monthly demand. <b>Historical</b> demand = 12-month average of the Historical Data sheet (returns counted as 0); <b>Market</b> demand = Market Demand sheet.
+    Items with stock but no demand are Critical. Segment = number of months (last 12, excluding the months listed above) with at least one sale in the past sales file, for the selected zone/branch.
+    Strangers are make-to-order: no reorder qty. Stock status is always national. Tap a row to see its monthly sales.
   </p>
 </div>
 
@@ -247,19 +297,23 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
 <script>
 const STATUS = {
-  rep:  {label:'Replenish',         c:'--rep',  cb:'--rep-bg'},
-  ok:   {label:'Perfectly stocked', c:'--ok',   cb:'--ok-bg'},
-  liq:  {label:'Liquidate',         c:'--liq',  cb:'--liq-bg'},
-  crit: {label:'Critical',          c:'--crit', cb:'--crit-bg'},
-  none: {label:'No movement',       c:'--none', cb:'--none-bg'}
+  rep:   {label:'Understocked',      c:'--rep',  cb:'--rep-bg'},
+  ok:    {label:'Perfectly stocked', c:'--ok',   cb:'--ok-bg'},
+  liq:   {label:'Liquidate',         c:'--liq',  cb:'--liq-bg'},
+  crit:  {label:'Critical',          c:'--crit', cb:'--crit-bg'},
+  nomkt: {label:'No market input',   c:'--none', cb:'--none-bg'},
+  none:  {label:'No movement',       c:'--none', cb:'--none-bg'}
 };
-const ORDER = ['rep','ok','liq','crit','none'];
-const DEFAULTS = {t1:2, t2:4, t3:6, tgt:3};
+const ORDER = ['rep','ok','liq','crit','nomkt','none'];
+const MAIN = ['rep','ok','liq','crit'];
+const SEG = {run:'Runner', rpt:'Repeater', str:'Stranger', dead:'Dead stock', na:'—'};
+const SEGS = ['run','rpt','str','dead'];
+const DEFAULTS = {t1:2, t2:4, t3:6, tgt:3, fR:6, fP:3, exm:'2026-06, 2026-07'};
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 let DB = null;          // {items:[{desc,cur,transit,hist[12],market}], month12:'YYYY-MM'}
 let rows = [];
-let sortKey = 'cover', sortDir = 1, statusFilter = '', openRow = null;
+let sortKey = 'cover', sortDir = 1, statusFilter = '', segFilter = '', openRow = null, basis = 'hist';
 const $ = id => document.getElementById(id);
 
 /* ---------- helpers ---------- */
@@ -338,82 +392,139 @@ function parseMaster(wb){
 }
 
 /* ---------- compute ---------- */
-function thresholds(){ return {t1:n($('t1').value), t2:n($('t2').value), t3:n($('t3').value), tgt:n($('tgt').value)}; }
+function thresholds(){
+  return {t1:n($('t1').value), t2:n($('t2').value), t3:n($('t3').value), tgt:n($('tgt').value),
+          fR:n($('fR').value), fP:n($('fP').value), exm:$('exm').value};
+}
+function excludedMonths(){ return new Set(String($('exm').value).split(/[,;\s]+/).map(s => s.trim()).filter(s => /^\d{4}-\d{2}$/.test(s))); }
+function statusFor(avail, demand, T){
+  if (demand == null) return {st:'nomkt', cover:null};
+  if (demand <= 0) return {st: avail > 0 ? 'crit' : 'none', cover: avail > 0 ? Infinity : null};
+  const c = avail / demand;
+  return {st: c < T.t1 ? 'rep' : c <= T.t2 ? 'ok' : c <= T.t3 ? 'liq' : 'crit', cover:c};
+}
+/* frequency per item from past sales detail, for the 12-month window, selected zone/branch, minus excluded months */
+function segmentInfo(it, T, zone, br, ex, avail){
+  if (SD_STATE !== 'ready') return {seg:'na', freq:null, aq:null};
+  const a = windowStart(), b = DB.month12;
+  const months = new Set(); let aq = 0;
+  for (const l of (SDidx.get(nkey(it.desc)) || [])){
+    if (l.ym < a || l.ym > b || ex.has(l.ym)) continue;
+    if (zone && l.zone !== zone) continue;
+    if (br && l.br !== br) continue;
+    months.add(l.ym); aq += l.qty;
+  }
+  const f = months.size;
+  const seg = f >= T.fR ? 'run' : f >= T.fP ? 'rpt' : f >= 1 ? 'str' : (avail > 0 && !zone && !br ? 'dead' : 'zero');
+  return {seg, freq:f, aq};
+}
 function compute(){
-  const T = thresholds();
+  const T = thresholds(), ex = excludedMonths(), zone = $('zone').value, br = $('branch').value;
   rows = DB.items.map((it, i) => {
     const avg = it.hist.reduce((a,b) => a + Math.max(0,b), 0) / 12;
-    const demand = Math.max(avg, it.market ?? 0);
     const avail = it.cur + it.transit;
-    let cover = demand > 0 ? avail / demand : (avail > 0 ? Infinity : null);
-    let st;
-    if (demand <= 0) st = avail > 0 ? 'crit' : 'none';
-    else if (cover < T.t1) st = 'rep';
-    else if (cover <= T.t2) st = 'ok';
-    else if (cover <= T.t3) st = 'liq';
-    else st = 'crit';
-    const reorder = st === 'rep' ? Math.max(0, Math.ceil(T.tgt * demand - avail)) : 0;
-    const excess = (st === 'liq' || st === 'crit') ? Math.max(0, Math.floor(avail - T.t2 * demand)) : 0;
+    const H = statusFor(avail, avg, T);
+    const M = statusFor(avail, it.market, T);
+    const use = basis === 'mkt' ? M : H;
+    const demand = basis === 'mkt' ? it.market : avg;
+    const S = segmentInfo(it, T, zone, br, ex, avail);
+    const mto = use.st === 'rep' && S.seg === 'str';
+    const reorder = use.st === 'rep' && !mto ? Math.max(0, Math.ceil(T.tgt * demand - avail)) : 0;
+    const excess = (use.st === 'liq' || use.st === 'crit') && demand != null ? Math.max(0, Math.floor(avail - T.t2 * demand)) : 0;
     const fam = (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase();
-    return {i, desc:it.desc, fam, cur:it.cur, transit:it.transit, avail, avg, market:it.market, demand, cover, st, reorder, excess, hist:it.hist, last:it.hist[11]};
+    return {i, desc:it.desc, fam, cur:it.cur, transit:it.transit, avail, avg, market:it.market,
+      coverH:H.cover, coverM:M.cover, stH:H.st, stM:M.st, cover:use.cover, st:use.st,
+      seg:S.seg, freq:S.freq, aq:S.aq, mto, reorder, excess, hist:it.hist, last:it.hist[11]};
   });
 }
+const regionOn = () => !!($('zone').value || $('branch').value);
+/* rows visible under region filter: only items sold in that area */
+const inArea = r => !regionOn() || (r.freq != null && r.freq > 0);
 
 /* ---------- render ---------- */
 function render(){
   compute();
   const showNone = $('showNone').checked;
+  const base = rows.filter(inArea);
   const counts = {}; ORDER.forEach(s => counts[s] = {n:0, u:0});
-  rows.forEach(r => { counts[r.st].n++; counts[r.st].u += r.avail; });
+  base.forEach(r => { counts[r.st].n++; counts[r.st].u += r.avail; });
 
-  $('cards').innerHTML = ORDER.filter(s => s !== 'none' || showNone).map(s => {
+  // note bar
+  const notes = [];
+  if (basis === 'mkt'){
+    const nm = rows.filter(r => r.stM === 'nomkt').length;
+    if (nm) notes.push(`<b>Market view:</b> ${nm} of ${rows.length} items have no Market Demand entered, so they show as "No market input" and are left out of the grid.`);
+  }
+  if (regionOn()) notes.push(`<b>Region filter on:</b> segments are recalculated from ${esc($('branch').value || $('zone').value)} sales; stock status stays national. Showing ${base.length} items sold in this area. Regional totals won't exactly match national ones (about 7% of sales lines don't match a dashboard item).`);
+  if (SD_STATE === 'missing') notes.push('Past sales file (sales-detail.xlsx) not found — segments and region filters are unavailable.');
+  $('note').hidden = !notes.length; $('note').innerHTML = notes.join('<br>');
+
+  const cardKeys = MAIN.concat(basis === 'mkt' ? ['nomkt'] : []).concat(showNone ? ['none'] : []);
+  $('cards').innerHTML = cardKeys.map(s => {
     const S = STATUS[s];
+    const ro = base.filter(r => r.st === 'rep');
+    const extra = s === 'rep' ? ` · reorder ${fmt(ro.reduce((a,r)=>a+r.reorder,0),0)}` + (ro.some(r => r.mto) ? ` · ${ro.filter(r=>r.mto).length} make-to-order` : '')
+      : (s === 'liq' || s === 'crit') ? ' · excess ' + fmt(base.filter(r=>r.st===s).reduce((a,r)=>a+r.excess,0),0) : '';
     return `<button class="card ${statusFilter===s?'active':''}" data-st="${s}" style="--c:var(${S.c})">
       <div class="lbl">${S.label}</div><div class="n">${counts[s].n}</div>
-      <div class="u">${fmt(counts[s].u,0)} units in stock${s==='rep' ? ' · reorder ' + fmt(rows.filter(r=>r.st==='rep').reduce((a,r)=>a+r.reorder,0),0) : ''}${(s==='liq'||s==='crit') ? ' · excess ' + fmt(rows.filter(r=>r.st===s).reduce((a,r)=>a+r.excess,0),0) : ''}</div>
+      <div class="u">${fmt(counts[s].u,0)} units in stock${extra}</div>
     </button>`;
   }).join('');
-  document.querySelectorAll('.card').forEach(c => c.onclick = () => { statusFilter = statusFilter === c.dataset.st ? '' : c.dataset.st; $('st').value = statusFilter; render(); });
+  document.querySelectorAll('.card').forEach(c => c.onclick = () => { statusFilter = statusFilter === c.dataset.st ? '' : c.dataset.st; segFilter = ''; syncSelects(); render(); });
 
-  const total = ORDER.filter(s => s !== 'none').reduce((a,s) => a + counts[s].n, 0) || 1;
-  $('dist').innerHTML = ORDER.filter(s => s !== 'none').map(s => `<span title="${STATUS[s].label}: ${counts[s].n}" style="width:${counts[s].n/total*100}%;background:var(${STATUS[s].c})"></span>`).join('');
+  const total = MAIN.reduce((a,s) => a + counts[s].n, 0) || 1;
+  $('dist').innerHTML = MAIN.map(s => `<span title="${STATUS[s].label}: ${counts[s].n}" style="width:${counts[s].n/total*100}%;background:var(${STATUS[s].c})"></span>`).join('');
+
+  renderGrid(base);
 
   const labels = monthLabels(DB.month12);
   const q = $('q').value.trim().toLowerCase(), fam = $('fam').value;
-  let view = rows.filter(r =>
+  let view = base.filter(r =>
     (showNone || r.st !== 'none' || statusFilter === 'none') &&
     (!statusFilter || r.st === statusFilter) &&
+    (!segFilter || r.seg === segFilter) &&
     (!fam || r.fam === fam) &&
     (!q || String(r.desc).toLowerCase().includes(q)));
   view.sort((a,b) => {
     let x = a[sortKey], y = b[sortKey];
     if (sortKey === 'st'){ x = ORDER.indexOf(x); y = ORDER.indexOf(y); }
+    if (sortKey === 'seg'){ x = SEGS.indexOf(x); y = SEGS.indexOf(y); }
     if (x == null) x = -1; if (y == null) y = -1;
     if (typeof x === 'string') return x.localeCompare(y) * sortDir;
     return (x === y ? 0 : x > y ? 1 : -1) * sortDir;
   });
 
   const cols = [
-    ['desc','Description'],['st','Status'],['cover','Cover (mo)'],['cur','Current'],['transit','In-transit'],['avail','Available'],
-    ['avg','Avg / mo'],['market','Market'],['demand','Demand used'],['last', labels[11] + ' sales'],['reorder','Reorder qty'],['excess','Excess qty'],['spark','12-mo trend']
+    ['desc','Description'],['st','Status'],['seg','Segment'],['freq','Months sold'],
+    ['coverH','Cover (hist)'],['coverM','Cover (mkt)'],['cur','Current'],['transit','In-transit'],['avail','Available'],
+    ['avg','Avg / mo'],['market','Market / mo'],['aq', regionOn() ? 'Area qty (12m)' : 'Qty (12m, detail)'],['last', labels[11] + ' sales'],['reorder','Reorder qty'],['excess','Excess qty'],['spark','12-mo trend']
   ];
-  $('thead').innerHTML = '<tr>' + cols.map(([k,l]) => `<th data-k="${k}">${l}${sortKey===k ? (sortDir>0?' ▲':' ▼') : ''}</th>`).join('') + '</tr>';
-  document.querySelectorAll('th').forEach(th => th.onclick = () => { const k = th.dataset.k; if (k === 'spark') return; if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'desc' ? 1 : -1; } render(); });
+  $('thead').innerHTML = '<tr>' + cols.map(([k,l]) => {
+    const on = basis === 'hist' ? 'coverH' : 'coverM';
+    return `<th data-k="${k}"${k===on ? ' style="color:var(--accent)"' : ''}>${l}${sortKey===k ? (sortDir>0?' ▲':' ▼') : ''}</th>`;
+  }).join('') + '</tr>';
+  document.querySelectorAll('#thead th').forEach(th => th.onclick = () => { const k = th.dataset.k; if (k === 'spark') return; if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = (k === 'desc' || k === 'seg' || k === 'st') ? 1 : -1; } render(); });
 
-  $('count').textContent = `Showing ${view.length} of ${rows.length} items`;
+  $('count').textContent = `Showing ${view.length} of ${base.length} items` + (regionOn() ? ' sold in this area' : '');
   if (!view.length){ $('tbody').innerHTML = `<tr><td colspan="${cols.length}" class="empty">No items match.</td></tr>`; return; }
+  const cv = v => v === Infinity ? '∞' : v == null ? '<span class="muted">—</span>' : fmt(v);
   $('tbody').innerHTML = view.map(r => {
     const S = STATUS[r.st];
     const max = Math.max(1, ...r.hist);
     const spark = `<svg class="spark" width="96" height="22" viewBox="0 0 96 22">${r.hist.map((v,j) => { const h = Math.max(0,v)/max*20; return `<rect x="${j*8}" y="${21-h}" width="6" height="${h||0.5}" fill="var(--accent)" opacity="${j===11?1:.55}"/>`; }).join('')}</svg>`;
+    const segTxt = r.seg === 'zero' ? '—' : SEG[r.seg];
     let html = `<tr data-i="${r.i}" style="cursor:pointer">
       <td><div class="dcell"><span title="${esc(r.desc)}">${esc(r.desc)}</span>${psButton(r)}</div></td>
       <td><span class="pill" style="--c:var(${S.c});--cb:var(${S.cb})">${S.label}</span></td>
-      <td>${r.cover === Infinity ? '∞' : fmt(r.cover)}</td>
+      <td>${segTxt === '—' ? '<span class="muted">—</span>' : `<span class="sgpill">${segTxt}</span>`}</td>
+      <td>${r.freq == null ? '—' : r.freq}</td>
+      <td${basis==='hist'?' style="font-weight:600"':''}>${cv(r.coverH)}</td>
+      <td${basis==='mkt'?' style="font-weight:600"':''}>${cv(r.coverM)}</td>
       <td>${fmt(r.cur,0)}</td><td>${fmt(r.transit,0)}</td><td><b>${fmt(r.avail,0)}</b></td>
-      <td>${fmt(r.avg,2)}</td><td>${r.market == null ? '<span class="muted">—</span>' : fmt(r.market,2)}</td><td>${fmt(r.demand,2)}</td>
+      <td>${fmt(r.avg,2)}</td><td>${r.market == null ? '<span class="muted">—</span>' : fmt(r.market,2)}</td>
+      <td>${r.aq == null ? '—' : fmt(r.aq,0)}</td>
       <td>${fmt(r.last,0)}</td>
-      <td>${r.reorder ? '<b style="color:var(--rep)">' + fmt(r.reorder,0) + '</b>' : '<span class="muted">—</span>'}</td>
+      <td>${r.mto ? '<span style="color:var(--muted);font-family:IBM Plex Sans,sans-serif;font-size:12px">Make to order</span>' : r.reorder ? '<b style="color:var(--rep)">' + fmt(r.reorder,0) + '</b>' : '<span class="muted">—</span>'}</td>
       <td>${r.excess ? '<b style="color:var(--liq)">' + fmt(r.excess,0) + '</b>' : '<span class="muted">—</span>'}</td>
       <td>${spark}</td></tr>`;
     if (openRow === r.i){
@@ -424,7 +535,47 @@ function render(){
   document.querySelectorAll('#tbody tr[data-i]').forEach(tr => tr.onclick = () => { const i = +tr.dataset.i; openRow = openRow === i ? null : i; render(); });
   document.querySelectorAll('.psbtn[data-ps]').forEach(b => b.onclick = e => { e.stopPropagation(); openPS(+b.dataset.ps); });
 }
+
+function renderGrid(base){
+  if (SD_STATE !== 'ready'){ $('gridPanel').hidden = true; return; }
+  $('gridPanel').hidden = false;
+  const T = thresholds();
+  const segCols = regionOn() ? ['run','rpt','str'] : SEGS;
+  const sub = {run:`≥ ${T.fR} mo`, rpt:`${T.fP}–${T.fR-1} mo`, str:`1–${Math.max(1,T.fP-1)} mo`, dead:'0 mo, has stock'};
+  $('gridSub').textContent = `${basis === 'mkt' ? 'Market' : 'Historical'} demand · months with sales in ${monthLabels(DB.month12)[0]} – ${monthLabels(DB.month12)[11]}` +
+    (excludedMonths().size ? ` (excluding ${[...excludedMonths()].join(', ')})` : '') + (regionOn() ? ` · ${$('branch').value || $('zone').value}` : ' · national');
+  let h = '<thead><tr><th></th>' + segCols.map(s => `<th>${SEG[s]}<br><span style="font-weight:400">${sub[s]}</span></th>`).join('') + '<th>Total</th></tr></thead><tbody>';
+  for (const st of MAIN){
+    const S = STATUS[st];
+    h += `<tr><th style="--c:var(${S.c})">${S.label}</th>`;
+    const all = base.filter(r => r.st === st), tn = all.length, tu = all.reduce((a,r) => a + r.avail, 0);
+    for (const sg of segCols){
+      const list = base.filter(r => r.st === st && r.seg === sg);
+      const u = list.reduce((a,r) => a + r.avail, 0);
+      const on = statusFilter === st && segFilter === sg;
+      h += `<td><button class="cell ${list.length?'':'empty'} ${on?'on':''} ${list.length?'tint':''}" data-st="${st}" data-sg="${sg}" style="--c:var(${S.c});--cb:var(${S.cb})" ${list.length?'':'disabled'} title="${S.label} ${SEG[sg]}">
+        <div class="cn">${list.length}</div><div class="cu">${fmt(u,0)} units${st==='rep' && sg==='str' && list.length ? ' · make to order' : ''}</div></button></td>`;
+    }
+    h += `<td><button class="cell" data-st="${st}" data-sg="" style="--c:var(${S.c})"><div class="cn">${tn}</div><div class="cu">${fmt(tu,0)} units</div></button></td></tr>`;
+  }
+  h += '</tbody>';
+  const orphan = base.filter(r => MAIN.includes(r.st) && r.seg === 'zero');
+  if (orphan.length) h += `<caption style="caption-side:bottom;text-align:left;font-size:12px;color:var(--muted);padding-top:6px">${orphan.length} item(s) counted in Total but in no segment: sales in Historical Data but none in the past sales file for this window — <a href="#" id="orphanLink">show</a>.</caption>`;
+  $('hgrid').innerHTML = h;
+  const ol = $('orphanLink'); if (ol) ol.onclick = e => { e.preventDefault(); statusFilter = ''; segFilter = 'zero'; syncSelects(); render(); document.querySelector('.tablewrap').scrollIntoView({behavior:'smooth'}); };
+  document.querySelectorAll('#hgrid .cell:not(.empty)').forEach(c => c.onclick = () => {
+    const st = c.dataset.st, sg = c.dataset.sg;
+    if (statusFilter === st && segFilter === sg){ statusFilter = ''; segFilter = ''; } else { statusFilter = st; segFilter = sg; }
+    syncSelects(); render();
+    document.querySelector('.tablewrap').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+}
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function syncSelects(){
+  $('st').value = statusFilter;
+  if (segFilter === 'zero' && ![...$('sg').options].some(o => o.value === 'zero')) $('sg').insertAdjacentHTML('beforeend', '<option value="zero">No segment</option>');
+  $('sg').value = segFilter;
+}
 
 function setup(){
   const labels = monthLabels(DB.month12);
@@ -432,22 +583,46 @@ function setup(){
   const fams = [...new Set(DB.items.map(it => (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase()))].sort();
   $('fam').innerHTML = '<option value="">All families</option>' + fams.map(f => `<option>${f}</option>`).join('');
   $('st').innerHTML = '<option value="">All statuses</option>' + ORDER.map(s => `<option value="${s}">${STATUS[s].label}</option>`).join('');
-  $('st').value = statusFilter;
+  $('sg').innerHTML = '<option value="">All segments</option>' + SEGS.map(s => `<option value="${s}">${SEG[s]}</option>`).join('');
+  syncSelects();
   $('salesHint').innerHTML = `Columns: Description · Sales Qty. Will be recorded as <b>${monthLabels(nextMonth(DB.month12))[11]}</b> (new Month 12); ${labels[0]} drops off.`;
   render();
 }
+function setupRegions(){
+  if (SD_STATE !== 'ready') return;
+  const zones = [...new Set(SD.lines.map(l => l.zone).filter(Boolean))].sort();
+  const cz = $('zone').value;
+  $('zone').innerHTML = '<option value="">All zones</option>' + zones.map(z => `<option>${esc(z)}</option>`).join('');
+  $('zone').value = zones.includes(cz) ? cz : '';
+  fillBranches();
+}
+function fillBranches(){
+  const z = $('zone').value, cb = $('branch').value;
+  const brs = [...new Set(SD.lines.filter(l => !z || l.zone === z).map(l => l.br).filter(Boolean))].sort();
+  $('branch').innerHTML = '<option value="">All branches</option>' + brs.map(b => `<option>${esc(b)}</option>`).join('');
+  $('branch').value = brs.includes(cb) ? cb : '';
+}
 
-/* ---------- thresholds ---------- */
+/* ---------- thresholds & controls ---------- */
 function loadThresholds(){
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('inv-thresholds') || '{}'); } catch(e){}
   for (const k in DEFAULTS) $(k).value = saved[k] ?? DEFAULTS[k];
 }
 function saveThresholds(){ try { localStorage.setItem('inv-thresholds', JSON.stringify(thresholds())); } catch(e){} }
-['t1','t2','t3','tgt'].forEach(id => $(id).addEventListener('input', () => { saveThresholds(); if (DB) render(); }));
+['t1','t2','t3','tgt','fR','fP','exm'].forEach(id => $(id).addEventListener('input', () => { saveThresholds(); if (DB) render(); }));
 $('btnReset').onclick = () => { for (const k in DEFAULTS) $(k).value = DEFAULTS[k]; saveThresholds(); render(); };
 ['q','fam'].forEach(id => $(id).addEventListener('input', () => DB && render()));
 $('st').onchange = () => { statusFilter = $('st').value; render(); };
+$('sg').onchange = () => { segFilter = $('sg').value; render(); };
 $('showNone').onchange = () => DB && render();
+$('zone').onchange = () => { fillBranches(); segFilter = ''; syncSelects(); DB && render(); };
+$('branch').onchange = () => { segFilter = ''; syncSelects(); DB && render(); };
+document.querySelectorAll('#basisSeg button').forEach(b => b.onclick = () => {
+  basis = b.dataset.b;
+  document.querySelectorAll('#basisSeg button').forEach(x => x.classList.toggle('on', x === b));
+  if (statusFilter === 'nomkt' && basis === 'hist') statusFilter = '';
+  syncSelects(); DB && render();
+});
 
 /* ---------- load ---------- */
 async function readFile(file){ const buf = await file.arrayBuffer(); return XLSX.read(buf, {type:'array'}); }
@@ -508,6 +683,7 @@ function parseSalesDetail(wb){
 function setSD(sd){
   SD = sd; SD_STATE = 'ready'; SDidx = new Map();
   for (const l of sd.lines){ const k = nkey(l.desc); if (!SDidx.has(k)) SDidx.set(k, []); SDidx.get(k).push(l); }
+  setupRegions();
 }
 function windowStart(){ let [y, m] = DB.month12.split('-').map(Number); m -= 11; while (m < 1){ m += 12; y--; } return y + '-' + String(m).padStart(2,'0'); }
 function linesFor(i, range){
@@ -529,7 +705,15 @@ function openPS(i){
   $('psQ').value = ''; $('psZone').value = ''; $('psBranch').value = '';
   setRange('12'); $('ps').showModal();
 }
-function setRange(r){ ps.range = r; $('psR12').classList.toggle('on', r === '12'); $('psRall').classList.toggle('on', r === 'all'); renderPS(true); }
+function setRange(r){
+  ps.range = r; $('psR12').classList.toggle('on', r === '12'); $('psRall').classList.toggle('on', r === 'all');
+  const z = $('psZone').value || $('zone').value, b = $('psBranch').value || $('branch').value;
+  renderPS(true);
+  // carry over the dashboard's region filter (or the one already chosen in this window)
+  if ([...$('psZone').options].some(o => o.value === z)) $('psZone').value = z;
+  if ([...$('psBranch').options].some(o => o.value === b)) $('psBranch').value = b;
+  if ($('psZone').value || $('psBranch').value) renderPS(false);
+}
 $('psR12').onclick = () => setRange('12');
 $('psRall').onclick = () => setRange('all');
 $('psClose').onclick = () => $('ps').close();
@@ -604,15 +788,20 @@ $('fileOpen').onchange = async e => {
 $('btnExport').onclick = () => {
   if (!DB) return;
   const labels = monthLabels(DB.month12);
-  const data = rows.map(r => ({
-    Description:r.desc, Status:STATUS[r.st].label, 'Cover (months)': r.cover === Infinity ? 'No demand' : (r.cover == null ? '' : +r.cover.toFixed(2)),
-    Current:r.cur, 'In-transit':r.transit, Available:r.avail, 'Avg / month':+r.avg.toFixed(2), 'Market demand': r.market ?? '',
-    'Demand used':+r.demand.toFixed(2), 'Reorder qty':r.reorder, 'Excess qty':r.excess,
+  const cv = v => v === Infinity ? 'No demand' : (v == null ? '' : +v.toFixed(2));
+  const area = $('branch').value || $('zone').value || 'National';
+  const data = rows.filter(inArea).map(r => ({
+    Description:r.desc, [`Status (${basis === 'mkt' ? 'market' : 'historical'})`]:STATUS[r.st].label,
+    'Status (historical)':STATUS[r.stH].label, 'Status (market)':STATUS[r.stM].label,
+    [`Segment (${area})`]: r.seg === 'zero' ? '' : SEG[r.seg], 'Months sold':r.freq ?? '',
+    'Cover - historical (months)':cv(r.coverH), 'Cover - market (months)':cv(r.coverM),
+    Current:r.cur, 'In-transit':r.transit, Available:r.avail, 'Avg / month':+r.avg.toFixed(2), 'Market demand / month': r.market ?? '',
+    [`Qty 12m (${area}, detail file)`]: r.aq ?? '', 'Reorder qty': r.mto ? 'Make to order' : r.reorder, 'Excess qty':r.excess,
     ...Object.fromEntries(labels.map((l,j) => [l, r.hist[j]]))
   }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Stock status');
-  XLSX.writeFile(wb, 'stock-status-' + DB.month12 + '.xlsx');
+  XLSX.writeFile(wb, 'stock-status-' + DB.month12 + (area !== 'National' ? '-' + area.replace(/\W+/g,'_') : '') + '.xlsx');
 };
 
 /* ---------- update tool ---------- */
