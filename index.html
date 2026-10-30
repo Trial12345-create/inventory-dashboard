@@ -73,7 +73,17 @@ tr:hover td{background:var(--soft)}
 .spark{vertical-align:middle}
 .count{font-size:13px;color:var(--muted);margin:10px 2px}
 .empty{padding:40px;text-align:center;color:var(--muted)}
-dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 40px)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;width:min(860px,calc(100vw - 32px));max-height:calc(100vh - 40px)}
+#preview{margin-top:14px}
+#preview h4{margin:12px 0 6px;font-size:14px}
+.pvgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.pv{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px}
+.pv b{display:block;font-size:13px;margin-bottom:2px}
+.rvwrap{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.rv{width:100%;min-width:640px;border-collapse:collapse}
+.rv th,.rv td{font:12px "IBM Plex Sans",sans-serif;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:normal;position:static}
+.rv th{background:var(--soft)}
+.rv select,.rv input{font-size:12px;padding:4px 6px;width:100%}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 .dlg{padding:20px}
 .dlg h2{margin:0 0 4px;font-size:18px}
@@ -192,6 +202,18 @@ table.hgrid td{font-family:"IBM Plex Sans",sans-serif}
       <select id="fam"><option value="">All families</option></select>
       <select id="st"><option value="">All statuses</option></select>
       <select id="sg"><option value="">All segments</option></select>
+      <select id="sortSel" title="Sort the table">
+        <option value="desc:1">Sort: Description A → Z</option>
+        <option value="desc:-1">Sort: Description Z → A</option>
+        <option value="cover:1">Sort: Cover low → high</option>
+        <option value="cover:-1">Sort: Cover high → low</option>
+        <option value="avail:-1">Sort: Available high → low</option>
+        <option value="reorder:-1">Sort: Reorder qty high → low</option>
+        <option value="excess:-1">Sort: Excess qty high → low</option>
+        <option value="st:1">Sort: Status</option>
+        <option value="seg:1">Sort: Segment</option>
+        <option value="custom" hidden>Sort: column header</option>
+      </select>
       <label class="chk"><input type="checkbox" id="showNone"> Show no-movement items</label>
     </div>
     <div class="rules">
@@ -255,7 +277,7 @@ table.hgrid td{font-family:"IBM Plex Sans",sans-serif}
 <dialog id="dlg">
   <div class="dlg">
     <h2>Update data</h2>
-    <div class="muted" style="font-size:13px">Add any of the files below, then apply. You'll get an updated <b>inventory.xlsx</b> to upload to GitHub.</div>
+    <div class="muted" style="font-size:13px">Add any of the files below and click <b>Check files</b>. You'll see how every line matches before anything changes; then <b>Apply &amp; download</b> gives you the updated file(s) to upload to GitHub.</div>
 
     <div class="field">
       <h3>Master file <span class="muted" style="font-weight:400">(optional)</span></h3>
@@ -288,9 +310,12 @@ table.hgrid td{font-family:"IBM Plex Sans",sans-serif}
     </div>
 
     <div class="log" id="log" hidden></div>
+    <div id="preview" hidden></div>
+    <datalist id="itemList"></datalist>
     <div class="actions">
       <button id="btnCancel">Close</button>
-      <button class="primary" id="btnApply">Apply &amp; download</button>
+      <button id="btnCheck">Check files</button>
+      <button class="primary" id="btnApply" disabled>Apply &amp; download</button>
     </div>
   </div>
 </dialog>
@@ -313,6 +338,8 @@ const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','
 
 let DB = null;          // {items:[{desc,cur,transit,hist[12],market}], month12:'YYYY-MM'}
 let rows = [];
+const COLL = new Intl.Collator('en', {numeric:true, sensitivity:'base'});
+let lastView = [];
 let sortKey = 'cover', sortDir = 1, statusFilter = '', segFilter = '', openRow = null, basis = 'hist';
 const $ = id => document.getElementById(id);
 
@@ -350,45 +377,106 @@ function findCol(header, ...words){
 }
 
 /* ---------- parse master ---------- */
+/* ---------- description standardiser (family · box · ratio · mounting · frame) ---------- */
+const STD_FR2HP = {63:0.25, 71:0.5, 80:1, 90:2, 100:3, 112:5, 132:7.5, 160:10};
+const STD_HP2FR = {}; for (const [f, h] of Object.entries(STD_FR2HP)) STD_HP2FR[h] = +f;
+const STD_FRAMES = new Set([56, 63, 71, 80, 90, 100, 112, 132, 160, 180, 200]);
+const STD_SPECIAL = [['TORQUE ARM','Torque arm'], ['SOLID INPUT','Solid input shaft'], ['O/P SHAFT','O/P shaft'],
+                     ['DOUBLE REDUCER','Double reducer'], ['OPFLANGE','O/P flange'], ['EXTRA FOOT','Extra foot']];
+function stdHp(s){ s = s.replace(/½/g, '1/2').replace(/¼/g, '1/4'); if (s.includes('/')){ const [a, b] = s.split('/'); return +a / +b; } return parseFloat(s); }
+function stdParse(desc){
+  const t = String(desc ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+  const p = {clean:t, fam:null, box:null, bore:'', ratio:null, mount:'?', frame:null, ftype:null, hp:null, fromHp:false};
+  p.special = STD_SPECIAL.filter(([k]) => t.includes(k)).map(([, l]) => l).join(' + ');
+  const m = t.match(/^(FMHB|FMVB|FLHF|FH|FK|FW)\s*-?\s*(\d+)(?:\s*\/\s*(\d+))?/);
+  if (!m) return p;
+  p.fam = m[1]; p.box = m[2];
+  const rest = t.slice(m[0].length);
+  const b = rest.match(/BORE\s*(\d+)/); p.bore = b ? b[1] : '';
+  let r = rest.match(/\bR(?:ATIO)?\s*(\d+(?:\.\d+)?)/);
+  if (!r) r = rest.match(/^\s*-\s*(\d+(?:\.\d+)?)\s*-/);
+  if (!r) r = rest.match(/^\s+(\d+(?:\.\d+)?)\s/);
+  p.ratio = r ? String(parseFloat(r[1])) : null;
+  const after = r ? rest.slice(r.index + r[0].length) : rest;
+  if (after.includes('FOOT')) p.mount = 'FOOT';
+  else if (after.includes('FLANGE') || /(?<![A-Z])FL(?![A-Z])/.test(after)) p.mount = 'FLANGE';
+  else if (/(?<![A-Z])F(?![A-Z])/.test(after)) p.mount = 'FOOT';          // "F" = Foot (owner, 29 Oct)
+  const dual = after.match(/(\d{2,3})\s*B?5?\s*\/\s*(\d{2,3})\s*B(5|14)/);
+  const fr = [...after.matchAll(/(?<!\d)(\d{2,3})\s*B(5|14)/g)].filter(x => STD_FRAMES.has(+x[1]));
+  if (dual && STD_FRAMES.has(+dual[1]) && STD_FRAMES.has(+dual[2])){ p.frame = dual[1] + '/' + dual[2]; p.ftype = 'B' + dual[3]; }
+  else if (fr.length){ p.frame = String(+fr[0][1]); p.ftype = 'B' + fr[0][2]; }
+  else { const m2 = after.match(/(?<![\d.])(\d{2,3})\s+B5B3/); if (m2){ p.frame = m2[1]; p.ftype = 'B5'; } }
+  const hs = [...after.replace(/½/g, '1/2').replace(/¼/g, '1/4').matchAll(/(?<![\d.])(\d+\/\d+|\d+(?:\.\d+)?)(?:\s*[-~]\s*(\d+(?:\.\d+)?))?\s*HP/g)];
+  if (hs.length){ const h = hs[hs.length - 1]; p.hp = h[2] ? null : stdHp(h[1]); }
+  if (p.frame == null && p.hp != null && STD_HP2FR[p.hp] != null){ p.frame = String(STD_HP2FR[p.hp]); p.ftype = 'B5'; p.fromHp = true; }
+  return p;
+}
+function stdKey(desc){
+  const p = typeof desc === 'object' ? desc : stdParse(desc);
+  if (!p.fam || !p.ratio) return null;
+  return [p.fam, p.box, p.bore || '', p.ratio, p.mount, (p.frame || '') + (p.ftype || ''), p.special || ''].join('|');
+}
+
+/* ---------- master file ---------- */
+function rowIdMaker(){ const occ = new Map(); return (r, iCol, dCol) => {
+  if (iCol >= 0 && key(r[iCol])) return key(r[iCol]);
+  const d = key(r[dCol]); const c = (occ.get(d) || 0) + 1; occ.set(d, c); return d + (c > 1 ? ' #' + c : ''); }; }
 function parseMaster(wb){
-  const stock = sheetRows(wb, 'stock');
-  const hist = sheetRows(wb, 'histor');
-  const mkt = sheetRows(wb, 'market');
+  const stock = sheetRows(wb, 'stock'), hist = sheetRows(wb, 'histor'), mkt = sheetRows(wb, 'market');
   if (!stock || !hist) throw new Error('Master file needs "Stock" and "Historical Data" sheets.');
-  const items = []; const byKey = new Map();
-  const add = d => { const it = {desc:d, cur:0, transit:0, hist:Array(12).fill(0), market:null}; items.push(it); if (!byKey.has(key(d))) byKey.set(key(d), it); return it; };
-  // Stock — keep row order; duplicates (same text) stay separate rows
-  const sh = stock[0], sD = findCol(sh,'desc'), sC = findCol(sh,'current'), sT = findCol(sh,'transit','manufact');
-  const stockSeen = new Map();
+  const items = [], byId = new Map();
+  const sh = stock[0], sI = findCol(sh,'item id'), sD = findCol(sh,'desc'), sC = findCol(sh,'current'), sT = findCol(sh,'transit','manufact');
+  const idS = rowIdMaker();
   for (const r of stock.slice(1)){
-    const d = r[sD]; if (key(d) === '') continue;
-    const it = add(d); it.cur = n(r[sC]); it.transit = sT >= 0 ? n(r[sT]) : 0;
-    stockSeen.set(key(d), (stockSeen.get(key(d))||[]).concat(it));
+    if (key(r[sD]) === '' && (sI < 0 || key(r[sI]) === '')) continue;
+    const id = idS(r, sI, sD);
+    const it = {id, desc:key(r[sD]) || id, cur:n(r[sC]), transit: sT >= 0 ? n(r[sT]) : 0, hist:Array(12).fill(0), market:null};
+    items.push(it); byId.set(id, it);
   }
-  // History — match row-by-row in order for identical texts
-  const hh = hist[0], hD = findCol(hh,'desc');
-  const mCols = []; for (let i = 1; i <= 12; i++){ const c = hh.findIndex(x => String(x).trim().toLowerCase() === 'month ' + i); mCols.push(c); }
-  const used = new Map();
+  const hh = hist[0], hI = findCol(hh,'item id'), hD = findCol(hh,'desc'), idH = rowIdMaker();
+  const mCols = []; for (let i = 1; i <= 12; i++) mCols.push(hh.findIndex(x => String(x).trim().toLowerCase() === 'month ' + i));
   for (const r of hist.slice(1)){
-    const k = key(r[hD]); if (!k) continue;
-    const list = stockSeen.get(k) || []; const idx = used.get(k) || 0; used.set(k, idx+1);
-    const it = list[idx] || add(r[hD]);
-    it.hist = mCols.map(c => c >= 0 ? n(r[c]) : 0);
+    if (key(r[hD]) === '' && (hI < 0 || key(r[hI]) === '')) continue;
+    const it = byId.get(idH(r, hI, hD)); if (it) it.hist = mCols.map(c => c >= 0 ? n(r[c]) : 0);
   }
   if (mkt){
-    const mh = mkt[0], mD = findCol(mh,'desc'), mV = findCol(mh,'market','demand');
-    const usedM = new Map();
+    const mh = mkt[0], mI = findCol(mh,'item id'), mD = findCol(mh,'desc'), mV = findCol(mh,'market demand','demand','market'), idM = rowIdMaker();
     for (const r of mkt.slice(1)){
-      const k = key(r[mD]); if (!k) continue;
-      const list = stockSeen.get(k) || []; const idx = usedM.get(k) || 0; usedM.set(k, idx+1);
-      const it = list[idx]; if (!it) continue;
-      it.market = (r[mV] === '' || r[mV] == null) ? null : n(r[mV]);
+      if (key(r[mD]) === '' && (mI < 0 || key(r[mI]) === '')) continue;
+      const it = byId.get(idM(r, mI, mD)); if (it) it.market = (r[mV] === '' || r[mV] == null) ? null : n(r[mV]);
     }
   }
+  const aliases = [];
+  const al = sheetRows(wb, 'alias');
+  if (al){ const ah = al[0], aS = findCol(ah,'spelling','desc'), aI = findCol(ah,'item id'), aA = findCol(ah,'added');
+    for (const r of al.slice(1)) if (key(r[aS]) && byId.has(key(r[aI]))) aliases.push({spelling:key(r[aS]), id:key(r[aI]), added: aA >= 0 ? key(r[aA]) : ''}); }
   let m12 = '2026-09';
   const set = sheetRows(wb, 'setting');
   if (set){ const row = set.find(r => String(r[0]).toLowerCase().includes('month 12')); if (row) m12 = normMonth(row[1]); }
-  return {items, month12:m12};
+  const db = {items, month12:m12, aliases};
+  indexDB(db);
+  return db;
+}
+/* alias + standard-key indexes: every spelling we know -> item */
+function indexDB(db){
+  db.byId = new Map(db.items.map(it => [it.id, it]));
+  const seen = new Set(db.aliases.map(a => nkey(a.spelling) + '\u0001' + a.id));
+  for (const it of db.items) if (!seen.has(nkey(it.desc) + '\u0001' + it.id)){ db.aliases.push({spelling:it.desc, id:it.id, added:''}); seen.add(nkey(it.desc) + '\u0001' + it.id); }
+  db.alias = new Map(); db.keyIdx = new Map();
+  for (const a of db.aliases){
+    if (!db.byId.has(a.id)) continue;
+    if (!db.alias.has(nkey(a.spelling))) db.alias.set(nkey(a.spelling), a.id);
+    const k = stdKey(a.spelling); if (!k) continue;
+    if (!db.keyIdx.has(k)) db.keyIdx.set(k, new Set()); db.keyIdx.get(k).add(a.id);
+  }
+}
+function resolveDesc(db, desc){
+  const a = db.alias.get(nkey(desc)); if (a) return {id:a, how:'name'};
+  const k = stdKey(desc);
+  if (k){ const ids = db.keyIdx.get(k);
+    if (ids && ids.size === 1) return {id:[...ids][0], how:'standardised'};
+    if (ids && ids.size > 1) return {id:null, how:'ambiguous', options:[...ids]}; }
+  return {id:null, how:'unknown', options:[]};
 }
 
 /* ---------- compute ---------- */
@@ -408,7 +496,7 @@ function segmentInfo(it, T, zone, br, ex, avail){
   if (SD_STATE !== 'ready') return {seg:'na', freq:null, aq:null};
   const a = windowStart(), b = DB.month12;
   const months = new Set(); let aq = 0;
-  for (const l of (SDidx.get(nkey(it.desc)) || [])){
+  for (const l of (SDidx.get(it.id) || [])){
     if (l.ym < a || l.ym > b || ex.has(l.ym)) continue;
     if (zone && l.zone !== zone) continue;
     if (br && l.br !== br) continue;
@@ -432,7 +520,7 @@ function compute(){
     const reorder = use.st === 'rep' && !mto ? Math.max(0, Math.ceil(T.tgt * demand - avail)) : 0;
     const excess = (use.st === 'liq' || use.st === 'crit') && demand != null ? Math.max(0, Math.floor(avail - T.t2 * demand)) : 0;
     const fam = (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase();
-    return {i, desc:it.desc, fam, cur:it.cur, transit:it.transit, avail, avg, market:it.market,
+    return {i, id:it.id, desc:it.desc, fam, cur:it.cur, transit:it.transit, avail, avg, market:it.market,
       coverH:H.cover, coverM:M.cover, stH:H.st, stM:M.st, cover:use.cover, st:use.st,
       seg:S.seg, freq:S.freq, aq:S.aq, mto, reorder, excess, hist:it.hist, last:it.hist[11]};
   });
@@ -490,9 +578,11 @@ function render(){
     if (sortKey === 'st'){ x = ORDER.indexOf(x); y = ORDER.indexOf(y); }
     if (sortKey === 'seg'){ x = SEGS.indexOf(x); y = SEGS.indexOf(y); }
     if (x == null) x = -1; if (y == null) y = -1;
-    if (typeof x === 'string') return x.localeCompare(y) * sortDir;
+    if (typeof x === 'string' || typeof y === 'string') return COLL.compare(String(x), String(y)) * sortDir;
     return (x === y ? 0 : x > y ? 1 : -1) * sortDir;
   });
+  lastView = view;
+  syncSort();
 
   const cols = [
     ['desc','Description'],['st','Status'],['seg','Segment'],['freq','Months sold'],
@@ -506,6 +596,7 @@ function render(){
   document.querySelectorAll('#thead th').forEach(th => th.onclick = () => { const k = th.dataset.k; if (k === 'spark') return; if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = (k === 'desc' || k === 'seg' || k === 'st') ? 1 : -1; } render(); });
 
   $('count').textContent = `Showing ${view.length} of ${base.length} items` + (regionOn() ? ' sold in this area' : '');
+  $('btnExport').textContent = `Export view (${view.length})`; $('btnExport').disabled = !view.length;
   if (!view.length){ $('tbody').innerHTML = `<tr><td colspan="${cols.length}" class="empty">No items match.</td></tr>`; return; }
   const cv = v => v === Infinity ? '∞' : v == null ? '<span class="muted">—</span>' : fmt(v);
   $('tbody').innerHTML = view.map(r => {
@@ -578,6 +669,8 @@ function syncSelects(){
 }
 
 function setup(){
+  if (!DB.alias) indexDB(DB);
+  indexSD();
   const labels = monthLabels(DB.month12);
   $('asof').textContent = `${DB.items.length} items · sales ${labels[0]} – ${labels[11]}`;
   const fams = [...new Set(DB.items.map(it => (String(it.desc).trim().match(/^[A-Za-z]+/) || ['Other'])[0].toUpperCase()))].sort();
@@ -614,6 +707,8 @@ $('btnReset').onclick = () => { for (const k in DEFAULTS) $(k).value = DEFAULTS[
 ['q','fam'].forEach(id => $(id).addEventListener('input', () => DB && render()));
 $('st').onchange = () => { statusFilter = $('st').value; render(); };
 $('sg').onchange = () => { segFilter = $('sg').value; render(); };
+$('sortSel').onchange = () => { const v = $('sortSel').value; if (v === 'custom') return; const [k, d] = v.split(':'); sortKey = k; sortDir = +d; render(); };
+function syncSort(){ const v = sortKey + ':' + sortDir; $('sortSel').value = [...$('sortSel').options].some(o => o.value === v) ? v : 'custom'; }
 $('showNone').onchange = () => DB && render();
 $('zone').onchange = () => { fillBranches(); segFilter = ''; syncSelects(); DB && render(); };
 $('branch').onchange = () => { segFilter = ''; syncSelects(); DB && render(); };
@@ -681,20 +776,32 @@ function parseSalesDetail(wb){
   throw new Error('Could not find a sheet with Customer and QTY columns.');
 }
 function setSD(sd){
-  SD = sd; SD_STATE = 'ready'; SDidx = new Map();
-  for (const l of sd.lines){ const k = nkey(l.desc); if (!SDidx.has(k)) SDidx.set(k, []); SDidx.get(k).push(l); }
-  setupRegions();
+  SD = sd; SD_STATE = 'ready';
+  indexSD(); setupRegions();
+}
+let SD_UNMATCHED = 0;
+function indexSD(){
+  SDidx = new Map(); SD_UNMATCHED = 0;
+  if (!SD || !DB) return;
+  const cache = new Map();
+  for (const l of SD.lines){
+    const k = nkey(l.desc);
+    if (!cache.has(k)) cache.set(k, resolveDesc(DB, l.desc).id);
+    const id = cache.get(k);
+    if (!id){ SD_UNMATCHED++; continue; }
+    if (!SDidx.has(id)) SDidx.set(id, []); SDidx.get(id).push(l);
+  }
 }
 function windowStart(){ let [y, m] = DB.month12.split('-').map(Number); m -= 11; while (m < 1){ m += 12; y--; } return y + '-' + String(m).padStart(2,'0'); }
 function linesFor(i, range){
-  const all = SDidx.get(nkey(DB.items[i].desc)) || [];
+  const all = SDidx.get(DB.items[i].id) || [];
   if (range === 'all') return all;
   const a = windowStart(), b = DB.month12;
   return all.filter(l => l.ym >= a && l.ym <= b);
 }
 function psButton(r){
   if (SD_STATE !== 'ready') return SD_STATE === 'loading' ? '' : '';
-  const all = SDidx.get(nkey(r.desc)) || [];
+  const all = SDidx.get(DB.items[r.i].id) || [];
   if (!all.length) return `<span class="psbtn none">No past sales</span>`;
   const c = linesFor(r.i, '12').length;
   return `<button class="psbtn" data-ps="${r.i}" title="${all.length} sales lines in total"><span class="full">Expand past sales · ${c}</span><span class="short">Sales · ${c}</span></button>`;
@@ -784,14 +891,23 @@ $('fileOpen').onchange = async e => {
   e.target.value = '';
 };
 
-/* ---------- export current view ---------- */
+/* ---------- export current view (only the rows on screen, in screen order) ---------- */
+function activeFilters(){
+  const f = [['Demand basis', basis === 'mkt' ? 'Market' : 'Historical'], ['Zone', $('zone').value || 'All'], ['Branch', $('branch').value || 'All'],
+    ['Status', statusFilter ? STATUS[statusFilter].label : 'All'], ['Segment', segFilter ? (SEG[segFilter] || 'No segment') : 'All'],
+    ['Family', $('fam').value || 'All'], ['Search', $('q').value || '—'], ['Show no-movement items', $('showNone').checked ? 'Yes' : 'No'],
+    ['Sorted by', $('sortSel').selectedOptions[0] ? $('sortSel').selectedOptions[0].text.replace('Sort: ','') : sortKey]];
+  const T = thresholds();
+  f.push(['Bands (months)', `Understocked < ${T.t1} · Perfect ≤ ${T.t2} · Liquidate ≤ ${T.t3} · Critical above`], ['Segments', `Runner ≥ ${T.fR} · Repeater ≥ ${T.fP} months`], ['Excluded months', $('exm').value || 'none']);
+  return f;
+}
 $('btnExport').onclick = () => {
-  if (!DB) return;
+  if (!DB || !lastView.length) return;
   const labels = monthLabels(DB.month12);
   const cv = v => v === Infinity ? 'No demand' : (v == null ? '' : +v.toFixed(2));
   const area = $('branch').value || $('zone').value || 'National';
-  const data = rows.filter(inArea).map(r => ({
-    Description:r.desc, [`Status (${basis === 'mkt' ? 'market' : 'historical'})`]:STATUS[r.st].label,
+  const data = lastView.map(r => ({
+    'Item ID':r.id, Description:r.desc, [`Status (${basis === 'mkt' ? 'market' : 'historical'})`]:STATUS[r.st].label,
     'Status (historical)':STATUS[r.stH].label, 'Status (market)':STATUS[r.stM].label,
     [`Segment (${area})`]: r.seg === 'zero' ? '' : SEG[r.seg], 'Months sold':r.freq ?? '',
     'Cover - historical (months)':cv(r.coverH), 'Cover - market (months)':cv(r.coverM),
@@ -800,115 +916,216 @@ $('btnExport').onclick = () => {
     ...Object.fromEntries(labels.map((l,j) => [l, r.hist[j]]))
   }));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Stock status');
-  XLSX.writeFile(wb, 'stock-status-' + DB.month12 + (area !== 'National' ? '-' + area.replace(/\W+/g,'_') : '') + '.xlsx');
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:30},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Stock status');
+  const fws = XLSX.utils.aoa_to_sheet([['Filter','Value'], ...activeFilters(), [], ['Rows exported', lastView.length], ['Exported on', new Date().toLocaleString('en-IN')]]);
+  fws['!cols'] = [{wch:24},{wch:70}];
+  XLSX.utils.book_append_sheet(wb, fws, 'Filters used');
+  const filtered = lastView.length < rows.length;
+  XLSX.writeFile(wb, 'stock-status-' + DB.month12 + (area !== 'National' ? '-' + area.replace(/\W+/g,'_') : '') + (filtered ? '-filtered' : '') + '.xlsx');
 };
 
 /* ---------- update tool ---------- */
 const log = (msg, cls='') => { const l = $('log'); l.hidden = false; l.innerHTML += `<div class="${cls}">${msg}</div>`; };
-$('btnUpdate').onclick = () => { $('log').hidden = true; $('log').innerHTML = ''; $('dlg').showModal(); };
+let PLAN = null;
+const resetPlan = () => { PLAN = null; $('btnApply').disabled = true; $('preview').hidden = true; $('preview').innerHTML = ''; };
+$('btnUpdate').onclick = () => { $('log').hidden = true; $('log').innerHTML = ''; resetPlan(); $('dlg').showModal(); };
 $('btnCancel').onclick = () => $('dlg').close();
+['fMaster','fStock','fSales','fMarket','fDetail'].forEach(id => $(id).addEventListener('change', resetPlan));
+document.querySelectorAll('input[name=dmode]').forEach(r => r.addEventListener('change', resetPlan));
 
-function readTwoCol(wb, valWords){
+function readLines(wb, valWords){
   const r = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
   let hi = r.findIndex(row => row.some(c => String(c).toLowerCase().includes('desc')));
   if (hi < 0) throw new Error('Could not find a "Description" column.');
-  const h = r[hi]; const d = findCol(h,'desc');
+  const h = r[hi], d = findCol(h,'desc'), idc = findCol(h,'item id');
   const cols = valWords.map(w => findCol(h, ...w));
-  return r.slice(hi+1).filter(row => key(row[d]) !== '').map(row => ({desc:row[d], vals:cols.map(c => c >= 0 ? row[c] : '')}));
+  return r.slice(hi+1).filter(row => key(row[d]) !== '' || (idc >= 0 && key(row[idc]) !== ''))
+    .map(row => ({desc:key(row[d]) || key(row[idc]), itemId: idc >= 0 ? key(row[idc]) : '', vals:cols.map(c => c >= 0 ? row[c] : '')}));
 }
+function itemName(db, id){ const it = db.byId.get(id); return it ? it.desc : id; }
 
-$('btnApply').onclick = async () => {
-  $('log').innerHTML = ''; $('btnApply').disabled = true;
+/* step 1: read every file and match every line — nothing changes yet */
+$('btnCheck').onclick = async () => {
+  $('log').innerHTML = ''; $('log').hidden = true; resetPlan(); $('btnCheck').disabled = true;
   try {
     const fM = $('fMaster').files[0], fS = $('fStock').files[0], fSa = $('fSales').files[0], fMk = $('fMarket').files[0], fD = $('fDetail').files[0];
     if (!fS && !fSa && !fMk && !fM && !fD){ log('Add at least one file.', 'err'); return; }
+    const db = fM ? parseMaster(await readFile(fM)) : structuredClone(DB);
+    if (!db){ log('No master data loaded.', 'err'); return; }
+    indexDB(db);
+    const plan = {db, files:{}, review:new Map(), learned:new Map()};
+    const match = (lines, label) => {
+      const st = {label, lines:lines.length, name:0, std:0, review:0, ids:new Set(), multi:0};
+      const per = new Map();
+      for (const ln of lines){
+        let res = ln.itemId && db.byId.has(ln.itemId) ? {id:ln.itemId, how:'name'} : resolveDesc(db, ln.desc);
+        ln.res = res;
+        if (res.id){
+          st[res.how === 'name' ? 'name' : 'std']++; per.set(res.id, (per.get(res.id) || 0) + 1);
+          if (res.how === 'standardised') plan.learned.set(nkey(ln.desc), {spelling:ln.desc, id:res.id});
+        } else {
+          st.review++;
+          const k = nkey(ln.desc);
+          if (!plan.review.has(k)) plan.review.set(k, {desc:ln.desc, files:new Set(), how:res.how, options:res.options});
+          plan.review.get(k).files.add(label);
+        }
+      }
+      st.ids = per; st.multi = [...per.values()].filter(v => v > 1).length;
+      return st;
+    };
+    if (fS){ const lines = readLines(await readFile(fS), [['current'],['transit','manufact']]); plan.files.stock = {lines, st:match(lines, 'Stock')}; }
+    if (fSa){ const lines = readLines(await readFile(fSa), [['sales','qty','quantity']]); plan.files.sales = {lines, st:match(lines, 'Sales')}; }
+    if (fMk){ const lines = readLines(await readFile(fMk), [['market','demand','qty']]); plan.files.market = {lines, st:match(lines, 'Market demand')}; }
     if (fD){
       const nd = parseSalesDetail(await readFile(fD));
-      const mode = document.querySelector('input[name=dmode]:checked').value;
       if (!nd.lines.length){ log('Past sales: no valid lines found in the file.', 'err'); return; }
-      const minD = nd.lines.reduce((a,l) => Math.min(a, l.sort), Infinity), maxD = nd.lines.reduce((a,l) => Math.max(a, l.sort), -Infinity);
-      const dstr = s => { const p = XLSX.SSF.parse_date_code(s); return fmtDate({y:p.y, m:p.m, d:p.d}); };
-      let combined;
-      if (mode === 'add' && SD){
-        const oldMax = SD.lines.reduce((a,l) => Math.max(a, l.sort), -Infinity);
-        if (minD <= oldMax) log(`Past sales: the new file starts ${dstr(minD)}, but existing data already runs to ${dstr(oldMax)}. If these lines were already included they are now counted twice — use "Replace all" with a full export instead.`, 'warn');
-        combined = {lines: SD.lines.concat(nd.lines), bad: 0};
-        log(`Past sales: added ${nd.lines.length} lines (${dstr(minD)} – ${dstr(maxD)}). Total now ${combined.lines.length}.`, 'good');
-      } else {
-        combined = nd;
-        log(`Past sales: ${nd.lines.length} lines loaded (${dstr(minD)} – ${dstr(maxD)}), replacing previous data.`, 'good');
-      }
-      if (nd.bad) log(`Past sales: ${nd.bad} line(s) skipped because the date could not be read.`, 'warn');
-      const known = new Set((DB ? DB.items : []).map(it => nkey(it.desc)));
-      const unk = [...new Set(nd.lines.map(l => l.desc).filter(d => !known.has(nkey(d))))];
-      if (unk.length) log(`Past sales: ${unk.length} description(s) don't match any dashboard item (they're kept in the file but not shown) — e.g. ${unk.slice(0,4).map(esc).join('; ')}`, 'warn');
-      setSD(combined);
-      writeSalesDetail(combined);
-      log('Downloaded <b>sales-detail.xlsx</b>. Upload it to GitHub (replace the old file).', 'good');
+      const names = new Map(); nd.lines.forEach(l => names.set(nkey(l.desc), l.desc));
+      let byName = 0, byStd = 0, none = 0, noneLines = 0; const noneEx = [];
+      for (const [k, d] of names){ const r = resolveDesc(db, d);
+        if (r.how === 'name') byName++; else if (r.id){ byStd++; plan.learned.set(k, {spelling:d, id:r.id}); }
+        else { none++; noneLines += nd.lines.filter(l => nkey(l.desc) === k).length; if (noneEx.length < 4) noneEx.push(d); } }
+      plan.files.detail = {nd, mode:document.querySelector('input[name=dmode]:checked').value, byName, byStd, none, noneLines, noneEx};
     }
-    if (!fS && !fSa && !fMk && !fM){ $('fDetail').value = ''; render(); return; }
-    let db = fM ? parseMaster(await readFile(fM)) : structuredClone(DB);
-    if (!db) { log('No master data loaded.', 'err'); return; }
-    const index = () => { const m = new Map(); db.items.forEach(it => { const k = key(it.desc); if (!m.has(k)) m.set(k, []); m.get(k).push(it); }); return m; };
-    const newItem = d => { const it = {desc:d, cur:0, transit:0, hist:Array(12).fill(0), market:null}; db.items.push(it); return it; };
-
-    if (fS){
-      const lines = readTwoCol(await readFile(fS), [['current'],['transit','manufact']]);
-      const idx = index(); const seen = new Set(); let added = [];
-      for (const ln of lines){
-        const k = key(ln.desc); let list = idx.get(k);
-        if (!list){ list = [newItem(ln.desc)]; idx.set(k, list); added.push(ln.desc); }
-        list[0].cur = n(ln.vals[0]); list[0].transit = n(ln.vals[1]); seen.add(k);
-      }
-      const missing = db.items.filter(it => !seen.has(key(it.desc)));
-      log(`Stock: ${lines.length} lines applied.`, 'good');
-      if (added.length) log(`Stock: ${added.length} new item(s) added — ${added.slice(0,5).map(esc).join('; ')}${added.length>5?'…':''}`, 'warn');
-      if (missing.length) log(`Stock: ${missing.length} item(s) not in the stock file kept their old values.`, 'warn');
-    }
-
-    if (fSa){
-      const lines = readTwoCol(await readFile(fSa), [['sales','qty','quantity']]);
-      const totals = new Map(); for (const ln of lines){ const k = key(ln.desc); totals.set(k, (totals.get(k)||0) + n(ln.vals[0])); }
-      const idx = index(); const added = [];
-      for (const [k] of totals) if (!idx.has(k)){ const ln = lines.find(l => key(l.desc) === k); idx.set(k, [newItem(ln.desc)]); added.push(ln.desc); }
-      db.items.forEach(it => { it.hist = it.hist.slice(1).concat([0]); });
-      for (const [k, v] of totals){ for (const it of idx.get(k)) it.hist[11] = v; }
-      const oldLabel = monthLabels(db.month12)[0];
-      db.month12 = nextMonth(db.month12);
-      log(`Sales: recorded as ${monthLabels(db.month12)[11]} (${totals.size} items, ${fmt([...totals.values()].reduce((a,b)=>a+b,0),0)} units). ${oldLabel} dropped.`, 'good');
-      if (added.length) log(`Sales: ${added.length} description(s) not found in stock were added as new items — check spelling: ${added.slice(0,5).map(esc).join('; ')}${added.length>5?'…':''}`, 'warn');
-    }
-
-    if (fMk){
-      const lines = readTwoCol(await readFile(fMk), [['market','demand','qty']]);
-      const idx = index(); let miss = [];
-      for (const ln of lines){
-        const list = idx.get(key(ln.desc)); if (!list){ miss.push(ln.desc); continue; }
-        const v = ln.vals[0]; list.forEach(it => it.market = (v === '' || v == null) ? null : n(v));
-      }
-      log(`Market demand: ${lines.length - miss.length} item(s) updated.`, 'good');
-      if (miss.length) log(`Market demand: ${miss.length} description(s) not found, skipped — ${miss.slice(0,5).map(esc).join('; ')}${miss.length>5?'…':''}`, 'warn');
-    }
-
-    writeMaster(db);
-    DB = db; setup();
-    log('Downloaded <b>inventory.xlsx</b>. Upload it to GitHub (replace the old file) to publish.', 'good');
-    ['fMaster','fStock','fSales','fMarket','fDetail'].forEach(id => $(id).value = '');
+    PLAN = plan; showPreview();
   } catch(err){ log('Error: ' + esc(err.message), 'err'); }
-  finally { $('btnApply').disabled = false; }
+  finally { $('btnCheck').disabled = false; }
+};
+
+function showPreview(){
+  const db = PLAN.db, f = PLAN.files, box = [];
+  const card = (title, lines) => `<div class="pv"><b>${title}</b>${lines.join('<br>')}</div>`;
+  if (f.stock){ const st = f.stock.st, untouched = db.items.length - st.ids.size;
+    box.push(card('Stock file', [`${st.lines} lines → ${st.ids.size} items`, `${st.name} matched by name`, `${st.std} matched by reading the description`,
+      st.review ? `<span class="warn">${st.review} need review</span>` : '<span class="good">0 need review</span>',
+      st.multi ? `${st.multi} items have 2+ lines (added together)` : '', `${untouched} items not in file keep old stock`].filter(Boolean))); }
+  if (f.sales){ const st = f.sales.st;
+    box.push(card('Monthly sales file', [`${st.lines} lines → ${st.ids.size} items`, `Recorded as <b style="display:inline">${monthLabels(nextMonth(db.month12))[11]}</b>`,
+      `${st.name} by name · ${st.std} by description`, st.review ? `<span class="warn">${st.review} need review</span>` : '<span class="good">0 need review</span>'])); }
+  if (f.market){ const st = f.market.st;
+    box.push(card('Market demand file', [`${st.lines} lines → ${st.ids.size} items`, `${st.name} by name · ${st.std} by description`,
+      st.review ? `<span class="warn">${st.review} need review</span>` : '<span class="good">0 need review</span>'])); }
+  if (f.detail){ const d = f.detail;
+    box.push(card('Past sales detail', [`${d.nd.lines.length} lines (${d.mode === 'add' ? 'add to existing' : 'replace all'})`,
+      `${d.byName + d.byStd + d.none} spellings: ${d.byName} by name, ${d.byStd} by description`,
+      d.none ? `<span class="warn">${d.none} spellings (${d.noneLines} lines) match no item — kept in file, not shown</span>` : '<span class="good">all spellings matched</span>'])); }
+  let html = `<h4>Preview — nothing has changed yet</h4><div class="pvgrid">${box.join('')}</div>`;
+  if (PLAN.learned.size) html += `<p class="muted" style="font-size:12px;margin:8px 0 0">${PLAN.learned.size} new spelling(s) will be remembered as aliases, e.g. ${[...PLAN.learned.values()].slice(0,3).map(l => `“${esc(l.spelling)}” → ${esc(itemName(db, l.id))}`).join('; ')}.</p>`;
+  if (PLAN.review.size){
+    $('itemList').innerHTML = db.items.map(it => `<option value="${esc(it.desc)}">`).join('');
+    html += `<h4>Needs review (${PLAN.review.size})</h4><p class="muted" style="font-size:12px;margin:0 0 6px">These lines don't match any item. Choose what to do with each — default is <b>Skip</b>, so nothing new is created by accident.</p>
+      <div class="rvwrap"><table class="rv"><thead><tr><th>Description in file</th><th>File</th><th>Action</th><th>…or map to item</th></tr></thead><tbody>` +
+      [...PLAN.review.entries()].map(([k, r], j) => `<tr><td>${esc(r.desc)}${r.how === 'ambiguous' ? '<br><span class="muted">Matches more than one item</span>' : ''}</td><td>${[...r.files].join(', ')}</td>
+        <td><select data-rk="${esc(k)}" class="rvSel"><option value="skip">Skip (don't import)</option>${(r.options||[]).map(id => `<option value="id:${esc(id)}">Map to: ${esc(itemName(db, id))}</option>`).join('')}<option value="new">Create as new item</option></select></td>
+        <td><input list="itemList" data-rk="${esc(k)}" class="rvMap" placeholder="Type to search items"></td></tr>`).join('') + `</tbody></table></div>`;
+  }
+  $('preview').innerHTML = html; $('preview').hidden = false; $('btnApply').disabled = false;
+  $('preview').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function reviewChoices(db){
+  const ch = new Map(), byName = new Map(db.items.map(it => [nkey(it.desc), it.id]));
+  document.querySelectorAll('.rvSel').forEach(s => ch.set(s.dataset.rk, s.value));
+  document.querySelectorAll('.rvMap').forEach(i => { const id = byName.get(nkey(i.value)); if (id) ch.set(i.dataset.rk, 'id:' + id); });
+  return ch;
+}
+function newItemId(db, desc){
+  const p = stdParse(desc);
+  let base = p.fam && p.ratio ? [p.fam, p.box + (p.bore ? 'B' + p.bore : ''), 'R' + p.ratio, p.mount === '?' ? 'NOMOUNT' : p.mount, (p.frame || 'NOFRAME').replace('/', '_') + (p.ftype || '')].join('-')
+                              : 'NEW-' + p.clean.replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+  let id = base, c = 2; while (db.byId.has(id)) id = base + '-' + c++;
+  return id;
+}
+
+/* step 2: apply the plan */
+$('btnApply').onclick = async () => {
+  if (!PLAN) return;
+  $('btnApply').disabled = true; $('log').innerHTML = '';
+  try {
+    const db = PLAN.db, f = PLAN.files, today = new Date().toISOString().slice(0,10);
+    const ch = reviewChoices(db); let created = [], mapped = 0, skipped = 0;
+    const target = ln => {
+      if (ln.res.id) return ln.res.id;
+      const c = ch.get(nkey(ln.desc)) || 'skip';
+      if (c === 'skip') return null;
+      if (c.startsWith('id:')) return c.slice(3);
+      return null;
+    };
+    // review decisions: new items and manual mappings become permanent aliases
+    for (const [k, r] of PLAN.review){
+      const c = ch.get(k) || 'skip';
+      if (c === 'new'){ const id = newItemId(db, r.desc); const it = {id, desc:r.desc, cur:0, transit:0, hist:Array(12).fill(0), market:null};
+        db.items.push(it); db.byId.set(id, it); db.aliases.push({spelling:r.desc, id, added:today}); created.push(r.desc);
+        for (const fl of ['stock','sales','market']) if (f[fl]) f[fl].lines.forEach(ln => { if (nkey(ln.desc) === k) ln.res = {id, how:'new'}; }); }
+      else if (c.startsWith('id:')){ db.aliases.push({spelling:r.desc, id:c.slice(3), added:today}); mapped++; }
+      else skipped++;
+    }
+    for (const l of PLAN.learned.values()) db.aliases.push({spelling:l.spelling, id:l.id, added:today});
+    indexDB(db);
+    if (f.stock){
+      const tot = new Map();
+      for (const ln of f.stock.lines){ const id = target(ln); if (!id) continue;
+        const t = tot.get(id) || [0, 0]; t[0] += n(ln.vals[0]); t[1] += n(ln.vals[1]); tot.set(id, t); }
+      for (const [id, [c, t]] of tot){ const it = db.byId.get(id); it.cur = c; it.transit = t; }
+      log(`Stock: updated ${tot.size} items. ${db.items.length - tot.size} items not in the file kept their old stock.`, 'good');
+    }
+    if (f.sales){
+      const tot = new Map();
+      for (const ln of f.sales.lines){ const id = target(ln); if (id) tot.set(id, (tot.get(id) || 0) + n(ln.vals[0])); }
+      db.items.forEach(it => { it.hist = it.hist.slice(1).concat([0]); });
+      for (const [id, v] of tot) db.byId.get(id).hist[11] = v;
+      const oldLabel = monthLabels(db.month12)[0]; db.month12 = nextMonth(db.month12);
+      log(`Sales: recorded as ${monthLabels(db.month12)[11]} for ${tot.size} items (${fmt([...tot.values()].reduce((a,b)=>a+b,0),0)} units). ${oldLabel} dropped.`, 'good');
+    }
+    if (f.market){
+      const tot = new Map();
+      for (const ln of f.market.lines){ const id = target(ln); if (!id) continue; const v = ln.vals[0];
+        if (v === '' || v == null){ if (!tot.has(id)) tot.set(id, null); } else tot.set(id, (tot.get(id) || 0) + n(v)); }
+      for (const [id, v] of tot) db.byId.get(id).market = v;
+      log(`Market demand: updated ${tot.size} items.`, 'good');
+    }
+    if (created.length) log(`Created ${created.length} new item(s): ${created.slice(0,5).map(esc).join('; ')}${created.length > 5 ? '…' : ''}`, 'warn');
+    if (mapped) log(`Mapped ${mapped} spelling(s) to existing items (remembered for next time).`, 'good');
+    if (skipped) log(`Skipped ${skipped} spelling(s) that matched no item.`, 'warn');
+    if (PLAN.learned.size) log(`Remembered ${PLAN.learned.size} new spelling(s) as aliases.`, 'good');
+
+    const masterChanged = f.stock || f.sales || f.market || $('fMaster').files[0] || created.length || mapped || PLAN.learned.size;
+    if (f.detail){
+      const d = f.detail; let combined;
+      if (d.mode === 'add' && SD){
+        const oldMax = SD.lines.reduce((a,l) => Math.max(a, l.sort), -Infinity), minD = d.nd.lines.reduce((a,l) => Math.min(a, l.sort), Infinity);
+        if (minD <= oldMax) log('Past sales: the new file overlaps dates already loaded. If those lines were already included they are now counted twice — use "Replace all" with a full export instead.', 'warn');
+        combined = {lines: SD.lines.concat(d.nd.lines), bad: 0};
+      } else combined = d.nd;
+      if (d.nd.bad) log(`Past sales: ${d.nd.bad} line(s) skipped because the date could not be read.`, 'warn');
+      DB = db; setSD(combined); writeSalesDetail(combined);
+      log(`Past sales: ${combined.lines.length} lines saved. Downloaded <b>sales-detail.xlsx</b> — upload it to GitHub.`, 'good');
+    }
+    if (masterChanged){
+      writeMaster(db);
+      log('Downloaded <b>inventory.xlsx</b> — upload it to GitHub (replace the old file). If your browser saved it as "inventory (1).xlsx", rename it first.', 'good');
+    }
+    DB = db; setup();
+    ['fMaster','fStock','fSales','fMarket','fDetail'].forEach(id => $(id).value = '');
+    PLAN = null; $('preview').hidden = true;
+  } catch(err){ log('Error: ' + esc(err.message), 'err'); $('btnApply').disabled = false; }
 };
 
 function writeMaster(db){
   const wb = XLSX.utils.book_new();
-  const stock = [['Description','Current Inventory','In-Transit/Manufacturing Inventory'], ...db.items.map(it => [it.desc, it.cur, it.transit])];
-  const hist = [['Description', ...Array.from({length:12}, (_,i) => 'Month ' + (i+1)), 'Average/Month', 'Max 12 Months'],
-    ...db.items.map(it => [it.desc, ...it.hist, +(it.hist.reduce((a,b)=>a+b,0)/12).toFixed(4), Math.max(0, ...it.hist)])];
-  const mkt = [['Description','Market Demand'], ...db.items.map(it => [it.desc, it.market ?? ''])];
+  const stock = [['Item ID','Description','Current Inventory','In-Transit/Manufacturing Inventory'], ...db.items.map(it => [it.id, it.desc, it.cur, it.transit])];
+  const hist = [['Item ID','Description', ...Array.from({length:12}, (_,i) => 'Month ' + (i+1)), 'Average/Month', 'Max 12 Months'],
+    ...db.items.map(it => [it.id, it.desc, ...it.hist, +(it.hist.reduce((a,b)=>a+b,0)/12).toFixed(4), Math.max(0, ...it.hist)])];
+  const mkt = [['Item ID','Description','Market Demand'], ...db.items.map(it => [it.id, it.desc, it.market ?? ''])];
   const set = [['Setting','Value','Note'], ['Month 12 is', db.month12, 'Newest month in Historical Data (YYYY-MM). The update tool moves this forward automatically.']];
+  const master = [['Item ID','Description','Family','Box','Ratio','Mounting','Frame'], ...db.items.map(it => { const p = stdParse(it.desc); return [it.id, it.desc, p.fam || '', p.box || '', p.ratio || '', p.mount === '?' ? '' : p.mount, (p.frame || '') + (p.ftype || '')]; })];
+  const seen = new Set(), al = [['Spelling','Item ID','Added']];
+  for (const a of db.aliases){ const k = nkey(a.spelling) + '\u0001' + a.id; if (seen.has(k) || !db.byId.has(a.id)) continue; seen.add(k); al.push([a.spelling, a.id, a.added || '']); }
   const add = (aoa, name, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(w => ({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
-  add(stock, 'Stock', [42,18,32]); add(hist, 'Historical Data', [42, ...Array(12).fill(9), 14, 14]);
-  add(mkt, 'Market Demand', [42,16]); add(set, 'Settings', [16,12,80]);
+  add(stock, 'Stock', [30,42,18,32]); add(hist, 'Historical Data', [30,42, ...Array(12).fill(9), 14, 14]);
+  add(mkt, 'Market Demand', [30,42,16]); add(set, 'Settings', [20,12,80]);
+  add(master, 'Item Master', [30,42,7,6,8,9,9]); add(al, 'Aliases', [46,30,12]);
   XLSX.writeFile(wb, 'inventory.xlsx');
 }
 
